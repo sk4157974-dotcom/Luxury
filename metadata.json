@@ -1,0 +1,6 @@
+{
+  "name": "Flavoria Fine Dining",
+  "description": "Experience world-class hospitality and fine dining at Luxury Hotel with unforgettable culinary moments, interactive moving plate showcase, and seamless reservations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

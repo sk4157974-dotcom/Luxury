@@ -1,0 +1,496 @@
+@import "tailwindcss";
+
+@theme {
+  --breakpoint-xs: 380px;
+}
+
+@layer base {
+  :root {
+    --font-serif: 'Cormorant Garamond', Georgia, serif;
+    --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    background-color: #FAF7F2;
+    color: #1F1A17;
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    overflow-x: hidden;
+    background-color: #FAF7F2;
+    color: #1F1A17;
+  }
+
+  ::selection {
+    background-color: #C48B46;
+    color: #FFFFFF;
+  }
+}
+
+/* Custom font utilities */
+.font-serif-luxury {
+  font-family: 'Cormorant Garamond', Georgia, serif;
+}
+
+.font-cinzel {
+  font-family: 'Cinzel', 'Cormorant Garamond', serif;
+}
+
+.font-italiana {
+  font-family: 'Italiana', 'Cormorant Garamond', serif;
+}
+
+.font-sans-modern {
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.font-poppins {
+  font-family: 'Poppins', 'Outfit', sans-serif;
+}
+
+/* Continuous slow motion plate rotation animation */
+@keyframes spinSlow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin-slow {
+  animation: spinSlow 32s linear infinite;
+}
+
+/* Elegant custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #141312;
+}
+::-webkit-scrollbar-thumb {
+  background: #3A3530;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #C5A880;
+}
+
+/* Luxury gold shimmer & glows */
+.gold-gradient-text {
+  background: linear-gradient(135deg, #F9F1E2 0%, #D8BD8E 50%, #C5A880 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.gold-border-subtle {
+  border-color: rgba(197, 168, 128, 0.22);
+}
+
+/* ==========================================================================
+   HOT FOOD RISING STEAM (BHAP) EFFECT
+   Wisps rise continuously upwards from the food, swaying with air currents,
+   expanding organically, and dissolving into the atmosphere.
+   ========================================================================== */
+
+@keyframes steamRiseMain {
+  0% {
+    transform: translate3d(0, 14px, 0) scale(0.6) rotate(0deg);
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.85;
+  }
+  45% {
+    transform: translate3d(10px, -35px, 0) scale(1.15) rotate(4deg);
+    opacity: 0.65;
+  }
+  75% {
+    transform: translate3d(-10px, -75px, 0) scale(1.55) rotate(-3deg);
+    opacity: 0.28;
+  }
+  100% {
+    transform: translate3d(14px, -120px, 0) scale(1.95) rotate(6deg);
+    opacity: 0;
+  }
+}
+
+@keyframes steamRiseDriftLeft {
+  0% {
+    transform: translate3d(0, 10px, 0) scale(0.55) rotate(0deg);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.8;
+  }
+  50% {
+    transform: translate3d(-14px, -38px, 0) scale(1.1) rotate(-6deg);
+    opacity: 0.55;
+  }
+  80% {
+    transform: translate3d(-6px, -80px, 0) scale(1.5) rotate(-2deg);
+    opacity: 0.22;
+  }
+  100% {
+    transform: translate3d(-18px, -125px, 0) scale(1.9) rotate(-8deg);
+    opacity: 0;
+  }
+}
+
+@keyframes steamRiseDriftRight {
+  0% {
+    transform: translate3d(0, 12px, 0) scale(0.6) rotate(0deg);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.85;
+  }
+  50% {
+    transform: translate3d(16px, -42px, 0) scale(1.2) rotate(5deg);
+    opacity: 0.6;
+  }
+  80% {
+    transform: translate3d(8px, -85px, 0) scale(1.6) rotate(2deg);
+    opacity: 0.25;
+  }
+  100% {
+    transform: translate3d(20px, -130px, 0) scale(2.05) rotate(8deg);
+    opacity: 0;
+  }
+}
+
+@keyframes steamPuffAscend {
+  0% {
+    transform: translate3d(0, 8px, 0) scale(0.5);
+    opacity: 0;
+  }
+  25% {
+    opacity: 0.65;
+  }
+  60% {
+    transform: translate3d(6px, -45px, 0) scale(1.35);
+    opacity: 0.35;
+  }
+  100% {
+    transform: translate3d(-8px, -95px, 0) scale(1.95);
+    opacity: 0;
+  }
+}
+
+@keyframes heatHazePulse {
+  0%, 100% {
+    transform: scale(0.95);
+    opacity: 0.25;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 0.45;
+  }
+}
+
+.steam-stream-1 {
+  animation: steamRiseMain 3.2s cubic-bezier(0.25, 1, 0.5, 1) infinite;
+}
+
+.steam-stream-2 {
+  animation: steamRiseDriftLeft 3.6s cubic-bezier(0.25, 1, 0.5, 1) 0.6s infinite;
+}
+
+.steam-stream-3 {
+  animation: steamRiseDriftRight 3.4s cubic-bezier(0.25, 1, 0.5, 1) 1.2s infinite;
+}
+
+.steam-stream-4 {
+  animation: steamRiseDriftLeft 3.8s cubic-bezier(0.25, 1, 0.5, 1) 1.8s infinite;
+}
+
+.steam-stream-5 {
+  animation: steamRiseDriftRight 4.0s cubic-bezier(0.25, 1, 0.5, 1) 2.4s infinite;
+}
+
+.steam-puff-1 {
+  animation: steamPuffAscend 2.8s ease-out 0.2s infinite;
+}
+
+.steam-puff-2 {
+  animation: steamPuffAscend 3.2s ease-out 1.1s infinite;
+}
+
+.steam-puff-3 {
+  animation: steamPuffAscend 3.6s ease-out 2.0s infinite;
+}
+
+.animate-heat-haze {
+  animation: heatHazePulse 2.5s ease-in-out infinite;
+}
+
+/* ==========================================================================
+   PERFECT UNIFIED 3D AMBIENT LIGHTING SYSTEM (ENHANCED LUMINOUS BLUE GLOW)
+   1. The card/section ITSELF is the single square - zero duplicate squares!
+   2. All 4 corners receive enhanced, luminous vibrant blue & sky-blue radiance that blooms from behind.
+   3. The light moves with the card seamlessly when elevated/hovered/touched.
+   4. Instant response on slightest touch and fluid response while sliding.
+   ========================================================================== */
+
+/* Card Wrapper - elevates to front z-index when active */
+.pop-card-wrapper {
+  position: relative;
+  transition: z-index 0.15s ease;
+}
+
+.pop-card-wrapper.lighting-active,
+.pop-card-wrapper.card-popped-front,
+.group.lighting-active,
+.group.card-popped-front {
+  z-index: 40 !important;
+}
+
+/* Base Card Face - Single Solid Square Container with zero secondary boxes */
+.card-solid-face {
+  position: relative;
+  border-radius: inherit;
+  z-index: 10;
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+              border-color 0.2s ease;
+  will-change: transform, box-shadow;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Completely remove any separate backlight element - light belongs directly on the card square */
+.backlight-3d-aura {
+  display: none !important;
+}
+
+/* Hover preview - strictly enabled on devices with real mouse hover (never on touch screens) */
+@media (hover: hover) and (pointer: fine) {
+  .pop-card-wrapper:hover .card-solid-face,
+  .group:hover .card-solid-face {
+    transform: translateY(-5px) scale(1.01);
+    border-color: #38BDF8 !important;
+    box-shadow: 
+      0 0 0 1.5px rgba(56, 189, 248, 0.70),
+      0 0 16px 3px rgba(56, 189, 248, 0.50),
+      0 0 30px 6px rgba(37, 99, 235, 0.35),
+      0 0 48px 12px rgba(14, 165, 233, 0.24),
+      0 14px 30px -6px rgba(15, 23, 42, 0.12) !important;
+  }
+
+  .luxury-lighting-card:hover {
+    transform: translateY(-5px) scale(1.01) !important;
+    border-color: #38BDF8 !important;
+    box-shadow: 
+      0 0 0 1.5px rgba(56, 189, 248, 0.70),
+      0 0 16px 3px rgba(56, 189, 248, 0.50),
+      0 0 30px 6px rgba(37, 99, 235, 0.35),
+      0 0 48px 12px rgba(14, 165, 233, 0.24),
+      0 14px 28px -4px rgba(15, 23, 42, 0.12) !important;
+    z-index: 30;
+  }
+
+  .pop-forward-3d:hover {
+    transform: translateY(-5px) scale(1.01) !important;
+    border-color: #38BDF8 !important;
+    box-shadow: 
+      0 0 0 1.5px rgba(56, 189, 248, 0.70),
+      0 0 16px 3px rgba(56, 189, 248, 0.50),
+      0 0 30px 6px rgba(37, 99, 235, 0.35),
+      0 0 48px 12px rgba(14, 165, 233, 0.24),
+      0 12px 24px -4px rgba(15, 23, 42, 0.10) !important;
+    z-index: 30;
+  }
+}
+
+/* Active / Tap / Slide / Touch - Section pops forward with enhanced luminous blue light glowing from behind */
+.pop-card-wrapper.lighting-active .card-solid-face,
+.pop-card-wrapper.card-popped-front .card-solid-face,
+.group.lighting-active .card-solid-face,
+.group.card-popped-front .card-solid-face,
+.card-solid-face.lighting-active,
+.card-solid-face.card-popped-front {
+  transform: translateY(-6px) scale(1.015) !important;
+  border-color: #38BDF8 !important;
+  box-shadow: 
+    0 0 0 2px rgba(56, 189, 248, 0.85),        /* Crisp vivid cyan/sky-blue edge */
+    0 0 18px 4px rgba(56, 189, 248, 0.60),       /* Rich vibrant sky-blue dispersion */
+    0 0 36px 8px rgba(37, 99, 235, 0.45),        /* Deep royal blue body glow */
+    0 0 58px 15px rgba(14, 165, 233, 0.30),      /* Enhanced wide ambient light blooming from behind */
+    0 18px 36px -6px rgba(15, 23, 42, 0.18) !important;
+  z-index: 30;
+}
+
+/* Base Card - Pure White Face */
+.luxury-lighting-card {
+  position: relative;
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), 
+              box-shadow 0.22s cubic-bezier(0.16, 1, 0.3, 1), 
+              border-color 0.2s ease;
+  will-change: transform, box-shadow;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.luxury-lighting-card.lighting-active,
+.luxury-lighting-card.card-popped-front {
+  transform: translateY(-5px) scale(1.01) !important;
+  border-color: #38BDF8 !important;
+  box-shadow: 
+    0 0 0 2px rgba(56, 189, 248, 0.85),
+    0 0 18px 4px rgba(56, 189, 248, 0.60),
+    0 0 36px 8px rgba(37, 99, 235, 0.45),
+    0 0 58px 15px rgba(14, 165, 233, 0.30),
+    0 16px 32px -4px rgba(15, 23, 42, 0.16) !important;
+  z-index: 30;
+}
+
+/* 3D POP FORWARD: Clean White Face + Enhanced Blue Backlight Glow */
+.pop-forward-3d {
+  position: relative;
+  background-color: #ffffff;
+  box-shadow: 0 4px 16px -3px rgba(43, 35, 29, 0.05);
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), 
+              box-shadow 0.22s cubic-bezier(0.16, 1, 0.3, 1), 
+              border-color 0.2s ease;
+  will-change: transform, box-shadow;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pop-forward-3d.lighting-active,
+.pop-forward-3d.card-popped-front {
+  transform: translateY(-5px) scale(1.01) !important;
+  border-color: #38BDF8 !important;
+  box-shadow: 
+    0 0 0 2px rgba(56, 189, 248, 0.85),
+    0 0 18px 4px rgba(56, 189, 248, 0.60),
+    0 0 36px 8px rgba(37, 99, 235, 0.45),
+    0 0 58px 15px rgba(14, 165, 233, 0.30),
+    0 16px 30px -4px rgba(15, 23, 42, 0.14) !important;
+  z-index: 30;
+}
+
+/* Backlight aura is 0% when idle (NO front/back glow at rest), 100% on hover/active */
+.backlight-aura {
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.pop-forward-3d:hover .backlight-aura,
+.pop-forward-3d:active .backlight-aura,
+.pop-forward-3d:focus-within .backlight-aura,
+.pop-forward-3d.lighting-active .backlight-aura {
+  opacity: 1 !important;
+  animation: light3DOrbit 4.5s ease-in-out infinite;
+}
+
+/* Smaller 3D pop forward with enhanced vibrant sky-blue backlight glow */
+.pop-forward-sm {
+  box-shadow: 0 2px 8px -2px rgba(43, 35, 29, 0.05);
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), 
+              box-shadow 0.22s cubic-bezier(0.16, 1, 0.3, 1), 
+              border-color 0.18s ease;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  will-change: transform, box-shadow;
+}
+
+.pop-forward-sm:hover,
+.pop-forward-sm:active,
+.pop-forward-sm.lighting-active {
+  transform: translateY(-3px) scale(1.02) !important;
+  box-shadow: 
+    0 0 0 1.5px rgba(56, 189, 248, 0.75),
+    0 0 16px 3px rgba(56, 189, 248, 0.52),
+    0 0 30px 6px rgba(37, 99, 235, 0.38),
+    0 10px 24px -4px rgba(37, 99, 235, 0.26) !important;
+  border-color: #38BDF8 !important;
+  z-index: 10;
+}
+
+/* Subtle Shimmer beam */
+.lighting-beam-sweep {
+  position: relative;
+  overflow: hidden;
+}
+
+.lighting-beam-sweep::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -140%;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0) 10%,
+    rgba(255, 255, 255, 0.4) 50%,
+    transparent 100%
+  );
+  transform: skewX(-25deg);
+  pointer-events: none;
+  z-index: 5;
+}
+
+.lighting-beam-sweep:hover::after,
+.lighting-beam-sweep:active::after {
+  animation: lightBeamSweep 0.75s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes lightBeamSweep {
+  0% {
+    left: -140%;
+  }
+  100% {
+    left: 170%;
+  }
+}
+
+/* Luminous Enhanced Blue Glow on interactive elements - Rich & Radiant */
+.glow-on-hover {
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  touch-action: manipulation;
+}
+
+.glow-on-hover:hover,
+.glow-on-hover:active,
+.glow-on-hover:focus-within {
+  box-shadow: 
+    0 0 0 1.5px rgba(56, 189, 248, 0.65),
+    0 0 16px 3px rgba(56, 189, 248, 0.48),
+    0 0 30px 6px rgba(37, 99, 235, 0.34),
+    0 10px 24px -4px rgba(37, 99, 235, 0.22) !important;
+  border-color: #38BDF8 !important;
+}
+
+/* Option Chip Light Glow in Vibrant Sky-Blue */
+.option-glow {
+  position: relative;
+  transition: all 0.2s ease;
+  touch-action: manipulation;
+}
+
+.option-glow:hover,
+.option-glow:active {
+  box-shadow: 
+    0 0 0 1px rgba(56, 189, 248, 0.65),
+    0 0 12px 2px rgba(56, 189, 248, 0.42),
+    0 4px 16px -2px rgba(37, 99, 235, 0.28) !important;
+  border-color: #38BDF8;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
