@@ -573,23 +573,27 @@ export const AssistantModal: React.FC<AssistantModalProps> = ({ isOpen, onClose 
     stopSpeaking();
     unlockAudio();
 
+    const activeId = messageId || 'active';
+
     // Primary: Web Audio API direct PCM/WAV playback
     if (base64Pcm && base64Pcm.trim().length > 0) {
-      setSpeakingMessageId(messageId || 'active');
+      setSpeakingMessageId(activeId);
+      console.log('[DEBUG] AUDIO_PLAYBACK_STARTED:', { messageId: activeId, pcmLength: base64Pcm.length });
       try {
         await playPCM(base64Pcm, () => {
           setSpeakingMessageId(null);
+          console.log('[DEBUG] AUDIO_PLAYBACK_ENDED:', { messageId: activeId });
         });
         return;
       } catch (err: any) {
-        console.error('Web Audio API playback notice, utilizing HTML5 audio fallback:', err);
+        console.warn('[DEBUG] AUDIO_PLAYBACK_ERROR:', err?.message || err);
       }
     }
 
     // Secondary fallback: HTML5 Audio via native Blob Object URL
     const targetSource = audioUrl || (base64Pcm ? `data:audio/wav;base64,${base64Pcm}` : null);
     if (targetSource) {
-      setSpeakingMessageId(messageId || 'active');
+      setSpeakingMessageId(activeId);
       const blobUrl = toBlobUrl(targetSource, 'audio/wav');
       try {
         const audio = new Audio(blobUrl);
@@ -601,15 +605,18 @@ export const AssistantModal: React.FC<AssistantModalProps> = ({ isOpen, onClose 
             URL.revokeObjectURL(blobUrl);
           }
         };
-        audio.onended = cleanup;
+        audio.onended = () => {
+          console.log('[DEBUG] AUDIO_PLAYBACK_ENDED:', { messageId: activeId });
+          cleanup();
+        };
         audio.onerror = (e) => {
-          console.error('Audio playback error:', e);
+          console.warn('[DEBUG] AUDIO_PLAYBACK_ERROR:', e);
           cleanup();
         };
         await audio.play();
         return;
       } catch (err) {
-        console.error('Audio play error:', err);
+        console.warn('[DEBUG] AUDIO_PLAYBACK_ERROR:', err);
         setSpeakingMessageId(null);
         audioRef.current = null;
         if (blobUrl.startsWith('blob:')) {
