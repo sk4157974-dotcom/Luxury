@@ -162,10 +162,10 @@ export const Hero: React.FC<HeroProps> = ({ onOpenAssistant, onSelectCategory })
               type="button"
               onClick={onOpenAssistant}
               id="hero-brand-ai-concierge-btn"
-              className="hidden xs:inline-flex items-center space-x-1.5 mt-1 px-2.5 xs:px-3 py-0.5 sm:py-1 rounded-full bg-gradient-to-r from-[#FAF2E1] via-[#FFF9EE] to-[#FAF2E1] border border-[#D9A855] text-[#8C5D19] hover:bg-gradient-to-r hover:from-[#C48B46] hover:to-[#A86F24] hover:text-white transition-all text-[8.5px] sm:text-[9.5px] font-bold tracking-wider w-fit cursor-pointer shadow-2xs group pop-forward-sm"
+              className="hidden xs:inline-flex items-center space-x-1.5 mt-1 px-2.5 xs:px-3 py-0.5 sm:py-1 rounded-full bg-emerald-50 border border-emerald-300 text-emerald-800 hover:bg-emerald-600 hover:text-white transition-all text-[8.5px] sm:text-[9.5px] font-bold tracking-wider w-fit cursor-pointer shadow-2xs group pop-forward-sm"
               title="Open 24/7 Hotel AI Concierge"
             >
-              <Sparkles className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-[#C48B46] group-hover:text-white transition-colors" />
+              <Sparkles className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-emerald-600 group-hover:text-white transition-colors" />
               <span>24/7 Luxury AI Concierge</span>
             </button>
           </div>
@@ -186,10 +186,10 @@ export const Hero: React.FC<HeroProps> = ({ onOpenAssistant, onSelectCategory })
           {onOpenAssistant && (
             <button
               onClick={onOpenAssistant}
-              className="flex items-center space-x-1.5 px-2.5 py-1.5 xs:px-3 xs:py-1.5 sm:px-3.5 sm:py-2 rounded-full bg-white border border-[#EBE3D7] shadow-sm text-[10.5px] xs:text-[11px] sm:text-xs font-semibold text-[#8C7D73] hover:text-[#C48B46] hover:border-[#E5A645] transition-all cursor-pointer pop-forward-sm glow-on-hover"
+              className="flex items-center space-x-1.5 px-2.5 py-1.5 xs:px-3 xs:py-1.5 sm:px-3.5 sm:py-2 rounded-full bg-emerald-50/80 border border-emerald-300 shadow-sm text-[10.5px] xs:text-[11px] sm:text-xs font-semibold text-emerald-800 hover:text-emerald-950 hover:bg-emerald-100 hover:border-emerald-400 transition-all cursor-pointer pop-forward-sm glow-on-hover"
               title="Ask AI Concierge"
             >
-              <Sparkles className="w-3 h-3 xs:w-3.5 xs:h-3.5 text-[#E5A645]" />
+              <Sparkles className="w-3 h-3 xs:w-3.5 xs:h-3.5 text-emerald-600" />
               <span className="hidden sm:inline">AI Concierge</span>
             </button>
           )}

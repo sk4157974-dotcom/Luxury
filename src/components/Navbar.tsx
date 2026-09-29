@@ -118,9 +118,9 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAssistant }) => {
               onClick={onOpenAssistant}
               id="nav-assistant-btn"
               type="button"
-              className="hidden lg:flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-[11px] tracking-wider uppercase bg-[#C48B46]/10 text-[#B87B32] border border-[#C48B46]/30 hover:bg-[#C48B46]/20 transition-all duration-200 cursor-pointer"
+              className="hidden lg:flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-[11px] tracking-wider uppercase bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100 hover:border-emerald-400 transition-all duration-200 cursor-pointer shadow-2xs"
             >
-              <Sparkles className="w-3.5 h-3.5 text-[#C48B46] animate-pulse" />
+              <Sparkles className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
               <span>AI Concierge</span>
             </button>
 
@@ -186,9 +186,9 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAssistant }) => {
                 setMobileMenuOpen(false);
                 onOpenAssistant();
               }}
-              className="flex items-center space-x-2 py-2 text-sm font-semibold text-[#B87B32]"
+              className="flex items-center space-x-2 py-2 text-sm font-semibold text-emerald-700 hover:text-emerald-800"
             >
-              <Sparkles className="w-4 h-4 text-[#C48B46]" />
+              <Sparkles className="w-4 h-4 text-emerald-600 animate-pulse" />
               <span>AI Dining Concierge</span>
             </button>
           </nav>

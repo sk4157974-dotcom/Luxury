@@ -1253,12 +1253,12 @@ export const AssistantModal: React.FC<AssistantModalProps> = ({ isOpen, onClose 
         <div className="px-3.5 py-2.5 sm:px-5 sm:py-3 border-b border-[#E8DEC8] flex items-center justify-between bg-gradient-to-r from-[#FAF7F2] via-[#F5EFE4] to-[#FAF7F2] flex-shrink-0">
           <div className="flex items-center space-x-2.5">
             <div className="flex flex-col items-center">
-              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-gradient-to-br from-[#E5A645] via-[#C48B46] to-[#8C5D19] p-[1.5px] shadow-sm flex items-center justify-center text-white">
-                <div className="w-full h-full rounded-full bg-[#FAF7F2] flex items-center justify-center">
-                  <Sparkles className="w-3.5 h-3.5 text-[#C48B46]" />
+              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-gradient-to-br from-emerald-500 via-emerald-600 to-teal-700 p-[1.5px] shadow-sm flex items-center justify-center text-white">
+                <div className="w-full h-full rounded-full bg-emerald-50 flex items-center justify-center">
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
                 </div>
               </div>
-              <span className="text-[7px] sm:text-[7.5px] font-extrabold text-[#C48B46] tracking-wider uppercase mt-0.5 leading-none">
+              <span className="text-[7px] sm:text-[7.5px] font-extrabold text-emerald-700 tracking-wider uppercase mt-0.5 leading-none">
                 AI
               </span>
             </div>
@@ -1343,7 +1343,7 @@ export const AssistantModal: React.FC<AssistantModalProps> = ({ isOpen, onClose 
                 className={`flex items-start space-x-2 ${isUser ? 'justify-end' : 'justify-start'}`}
               >
                 {!isUser && (
-                  <div className="w-6 h-6 rounded-full bg-[#FAF7F2] border border-[#E8DEC8] flex items-center justify-center text-[#C48B46] flex-shrink-0 mt-1 shadow-2xs">
+                  <div className="w-6 h-6 rounded-full bg-emerald-50 border border-emerald-300 flex items-center justify-center text-emerald-600 flex-shrink-0 mt-1 shadow-2xs">
                     <Bot className="w-3.5 h-3.5" />
                   </div>
                 )}
@@ -1442,13 +1442,13 @@ export const AssistantModal: React.FC<AssistantModalProps> = ({ isOpen, onClose 
 
           {loading && (
             <div className="flex items-start space-x-2">
-              <div className="w-6 h-6 rounded-full bg-[#FAF7F2] border border-[#E8DEC8] flex items-center justify-center text-[#C48B46] flex-shrink-0">
+              <div className="w-6 h-6 rounded-full bg-emerald-50 border border-emerald-300 flex items-center justify-center text-emerald-600 flex-shrink-0">
                 <Bot className="w-3.5 h-3.5" />
               </div>
-              <div className="bg-white border border-[#E8DEC8] rounded-2xl rounded-tl-none p-3 text-xs text-[#C48B46] flex items-center space-x-2 shadow-xs">
-                <span className="w-2 h-2 rounded-full bg-[#C48B46] animate-bounce" />
-                <span className="w-2 h-2 rounded-full bg-[#C48B46] animate-bounce [animation-delay:0.2s]" />
-                <span className="w-2 h-2 rounded-full bg-[#C48B46] animate-bounce [animation-delay:0.4s]" />
+              <div className="bg-white border border-[#E8DEC8] rounded-2xl rounded-tl-none p-3 text-xs text-emerald-600 flex items-center space-x-2 shadow-xs">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-bounce" />
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-bounce [animation-delay:0.2s]" />
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-bounce [animation-delay:0.4s]" />
                 <span className="ml-1 text-[11px] text-[#685D56] font-medium">Thinking...</span>
               </div>
             </div>
