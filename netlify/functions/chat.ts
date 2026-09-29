@@ -152,11 +152,6 @@ Assistant:`;
     const base64Pcm = cached?.base64Pcm || null;
     const audioUrl = cached?.audioUrl || null;
 
-    // Pre-warm audio generation in background (never delays chat response!)
-    if (!cached && apiKey) {
-      generateVoiceAudio(cleanReply, 'Aoede').catch(() => {});
-    }
-
     return {
       statusCode: 200,
       headers: CORS_HEADERS,

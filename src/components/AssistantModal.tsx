@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Send, Sparkles, MessageCircle, Bot, User, Volume2, VolumeX, Mic, MicOff, Square, Zap, Loader2, AlertCircle, RefreshCw, Calendar, Clock, Phone, CheckCircle2 } from 'lucide-react';
+import { X, Send, Sparkles, MessageCircle, Bot, User, Volume2, VolumeX, Mic, MicOff, Square, Zap, Loader2, AlertCircle, RefreshCw, RotateCcw, Calendar, Clock, Phone, CheckCircle2 } from 'lucide-react';
 import { RESTAURANT_CONFIG, buildQuickWhatsAppUrl, buildReservationWhatsAppUrl } from '../config/restaurant';
 import { playPCM, stopAllAudio, unlockAudio, StreamAudioPlayer } from '../utils/audioUtils';
 
@@ -523,6 +523,28 @@ export const AssistantModal: React.FC<AssistantModalProps> = ({ isOpen, onClose 
     setAudioLoadingId(null);
   };
 
+  // Reset entire conversation history with the agent & start fresh
+  const handleResetChat = () => {
+    stopSpeaking();
+    setMessages([
+      {
+        id: `welcome-${Date.now()}`,
+        sender: 'assistant',
+        text: 'Hello! Welcome to Luxury Hotel 🏨👑✨ Main Luxury Hotel ka official 24/7 AI Concierge Assistant hoon. Mera kaam yahan aapki har tarah se poori madad aur dil se seva karna hai! Aap hamare royal signature dishes 🍝, exact rates 💰, table reservation 🛎️, timings ⏰ ya direct WhatsApp order ke bare mein kuch bhi pooch sakte hain. Kahiye, main aapki kya seva karoon? 😊🙏',
+        timestamp: 'Just now'
+      }
+    ]);
+    setInputQuery('');
+    setLoading(false);
+    setAudioErrorMessage(null);
+    if (isListening && recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (_) {}
+      setIsListening(false);
+    }
+  };
+
   // Helper to convert base64 audio/wav into a native Blob URL for bulletproof browser playback
   const toBlobUrl = (source: string, mimeType = 'audio/wav'): string => {
     try {
@@ -632,17 +654,54 @@ export const AssistantModal: React.FC<AssistantModalProps> = ({ isOpen, onClose 
     ttsAbortControllerRef.current = controller;
     const timeoutId = setTimeout(() => controller.abort(), 40000);
 
-    // Attempt 1: Real-time chunk streaming for immediate speech playback (<700ms TTFB)
+    // Unified fast TTS request supporting both real-time streaming (Preview) and instant JSON (Netlify Production)
     try {
-      const streamRes = await fetch('/api/assistant/voice-stream', {
+      const res = await fetch('/api/assistant/tts', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json, text/event-stream' },
         signal: controller.signal,
         body: JSON.stringify({ text: cleanSpokenText, voice: 'Aoede' })
       });
 
-      if (streamRes.ok && streamRes.body) {
-        const reader = streamRes.body.getReader();
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+
+      const contentType = res.headers.get('content-type') || '';
+
+      // Path A: Standard JSON payload (Netlify Production & fast server responses)
+      if (contentType.includes('application/json')) {
+        const data = await res.json();
+        console.log('[DEBUG] TTS_RESPONSE_RECEIVED:', {
+          ok: res.ok,
+          hasPcm: Boolean(data?.base64Pcm),
+          pcmLength: data?.base64Pcm?.length
+        });
+
+        if (data?.success && (data?.base64Pcm || data?.audioUrl)) {
+          if (messageId) {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === messageId
+                  ? { ...m, base64Pcm: data.base64Pcm, audioUrl: data.audioUrl, audioError: null }
+                  : m
+              )
+            );
+          }
+          await playAudio(data.base64Pcm || null, data.audioUrl || null, messageId);
+          clearTimeout(timeoutId);
+          setAudioLoadingId(null);
+          return;
+        }
+
+        if (data?.error && !data?.rateLimited) {
+          throw new Error(data.error);
+        }
+      }
+
+      // Path B: Real-time SSE Chunk Streaming (Preview / Web Audio)
+      if (res.body && (contentType.includes('text/event-stream') || contentType.includes('stream'))) {
+        const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
         let streamPlayer: StreamAudioPlayer | null = null;
@@ -690,6 +749,26 @@ export const AssistantModal: React.FC<AssistantModalProps> = ({ isOpen, onClose 
                   }
                 }
               } catch (_) {}
+            } else if (trimmed.startsWith('{') && trimmed.includes('"base64Pcm"')) {
+              // Graceful JSON fallback inside stream
+              try {
+                const payload = JSON.parse(trimmed);
+                if (payload.success && (payload.base64Pcm || payload.audioUrl)) {
+                  setAudioLoadingId(null);
+                  if (messageId) {
+                    setMessages((prev) =>
+                      prev.map((m) =>
+                        m.id === messageId
+                          ? { ...m, base64Pcm: payload.base64Pcm, audioUrl: payload.audioUrl, audioError: null }
+                          : m
+                      )
+                    );
+                  }
+                  await playAudio(payload.base64Pcm || null, payload.audioUrl || null, messageId);
+                  clearTimeout(timeoutId);
+                  return;
+                }
+              } catch (_) {}
             }
           }
         }
@@ -699,45 +778,6 @@ export const AssistantModal: React.FC<AssistantModalProps> = ({ isOpen, onClose 
           setAudioLoadingId(null);
           return;
         }
-      }
-    } catch (streamErr) {
-      console.info('[Voice Stream notice, falling back to buffered TTS]:', streamErr);
-    }
-
-    try {
-      const result = await safeFetchJson<{
-        success?: boolean;
-        base64Pcm?: string | null;
-        audioUrl?: string | null;
-        error?: string;
-      }>('/api/assistant/tts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: controller.signal,
-        timeoutMs: 40000,
-        body: JSON.stringify({ text: cleanSpokenText, voice: 'Aoede' }),
-      });
-
-      console.log('[DEBUG] TTS_RESPONSE_RECEIVED:', {
-        status: result.status,
-        ok: result.ok,
-        hasPcm: Boolean(result.data?.base64Pcm),
-        pcmLength: result.data?.base64Pcm?.length
-      });
-
-      const data = result.data;
-      if (result.ok && data?.success && (data?.base64Pcm || data?.audioUrl)) {
-        if (messageId) {
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === messageId
-                ? { ...m, base64Pcm: data.base64Pcm, audioUrl: data.audioUrl, audioError: null }
-                : m
-            )
-          );
-        }
-        await playAudio(data.base64Pcm || null, data.audioUrl || null, messageId);
-        return;
       }
 
       setSpeakingMessageId(null);
@@ -1385,6 +1425,17 @@ export const AssistantModal: React.FC<AssistantModalProps> = ({ isOpen, onClose 
               )}
             </button>
 
+            {/* Reset Chat Header Button */}
+            <button
+              type="button"
+              onClick={handleResetChat}
+              title="Reset Chat (Saari pichli baatein hatayein)"
+              aria-label="Reset conversation"
+              className="p-1 sm:p-1.5 text-[#8C5D19] hover:text-[#1F1A17] hover:bg-[#C48B46]/10 rounded-full transition-colors cursor-pointer flex items-center justify-center group"
+            >
+              <RotateCcw className="w-3.5 h-3.5 sm:w-4 sm:h-4 transition-transform group-hover:-rotate-90 group-active:rotate-180" />
+            </button>
+
             {speakingMessageId && (
               <button
                 type="button"
@@ -1583,6 +1634,17 @@ export const AssistantModal: React.FC<AssistantModalProps> = ({ isOpen, onClose 
             }}
             className="flex items-center space-x-1.5 sm:space-x-2"
           >
+            {/* Reset Conversation History Button */}
+            <button
+              type="button"
+              onClick={handleResetChat}
+              title="Reset Chat (Saari pichli baatein hatayein aur nayi chat shuru karein)"
+              aria-label="Reset conversation"
+              className="p-2.5 sm:p-3 rounded-xl sm:rounded-2xl border border-[#E5D7C2] bg-[#FAF8F5] text-[#8C5D19] hover:bg-[#F5EDE1] hover:border-[#C48B46] hover:text-[#B6732E] transition-all cursor-pointer flex items-center justify-center flex-shrink-0 group active:scale-95"
+            >
+              <RotateCcw className="w-4 h-4 transition-transform group-hover:-rotate-90 group-active:rotate-180" />
+            </button>
+
             {/* Voice input mic button */}
             <button
               type="button"
