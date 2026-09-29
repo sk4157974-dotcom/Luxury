@@ -1,1 +1,8 @@
-/*    /index.html   200
+/api/assistant/tts    /.netlify/functions/tts   200!
+/api/assistant/tts/   /.netlify/functions/tts   200!
+/api/assistant/chat   /.netlify/functions/chat  200!
+/api/assistant/chat/  /.netlify/functions/chat  200!
+/api/voice-stream     /.netlify/functions/tts   200!
+/api/assistant/voice-stream /.netlify/functions/tts 200!
+/api/*                /.netlify/functions/api   200!
+/*                    /index.html               200

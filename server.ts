@@ -5,6 +5,12 @@ import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import WebSocket from 'ws';
 import { RESTAURANT_CONFIG } from './src/config/restaurant';
+import {
+  generateVoiceAudio,
+  getGeminiApiKey,
+  ttsAudioCache,
+  cleanSpeechText,
+} from './src/server/voiceService';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -44,53 +50,10 @@ async function startServer() {
     });
   });
 
-  // In-memory cache for generated speech audio (preserves quota and provides 0ms instant playback)
-  const ttsAudioCache = new Map<string, { base64Pcm: string; audioUrl: string }>();
-  const inFlightTts = new Map<string, Promise<{ base64Pcm: string; audioUrl: string } | null>>();
-  let ttsRateLimitCooldownUntil = 0;
-
-  function getSpeechKey(text: string, voiceName: string = 'Aoede'): string {
-    let clean = text
-      .replace(/\bNamaste\s*ji\s*ji\b/gi, 'Hello ji, ')
-      .replace(/\bNamaste\s*ji\b/gi, 'Hello ji, ')
-      .replace(/\bNamaste\b/gi, 'Hello, ')
-      .replace(/\bji\s+ji\b/gi, 'ji')
-      .replace(/\bHello\s+Hello\b/gi, 'Hello')
-      .replace(/(?:₹|Rs\.?|INR|\$)\s*(\d+)/gi, ' $1 rupaye, ')
-      .replace(/\b(\d+)\s*(?:rupees|rupee|rs\.?|\/-)\b/gi, ' $1 rupaye, ')
-      .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{1F900}-\u{1F9FF}\u{1FA70}-\u{1FAFF}]/gu, ' ')
-      .replace(/[*#_~`•–\[\]\(\)]/g, ' ')
-      .replace(/^-\s+/gm, '')
-      .replace(/:\s*/g, ', ')
-      .replace(/https?:\/\/\S+/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-
-    if (/^(?:hello|hi|welcome)\b/i.test(clean) && !/^(?:hello\s+ji|namaste\s+ji)/i.test(clean)) {
-      clean = clean.replace(/^(?:hello|hi|welcome)\b[,\s!]*/i, 'Hello ji, ');
-    }
-
-    let speechSlice = clean;
-    if (clean.length > 2200) {
-      const sub = clean.slice(0, 2200);
-      const lastPunct = Math.max(
-        sub.lastIndexOf('.'),
-        sub.lastIndexOf('!'),
-        sub.lastIndexOf('?')
-      );
-      if (lastPunct > 1600) {
-        speechSlice = sub.slice(0, lastPunct + 1).trim();
-      } else {
-        speechSlice = sub.trim();
-      }
-    }
-    return `${voiceName}::${speechSlice}`;
-  }
-
   function getCachedAudio(text: string, voiceName: string = 'Aoede'): { base64Pcm: string; audioUrl: string } | null {
     if (!text) return null;
-    const key = getSpeechKey(text, voiceName);
-    return ttsAudioCache.get(key) || null;
+    const slice = cleanSpeechText(text);
+    return ttsAudioCache.get(`${voiceName}::${slice}`) || null;
   }
 
   // AI Restaurant Assistant Endpoint
@@ -214,13 +177,7 @@ COMPREHENSIVE RESTAURANT KNOWLEDGE BASE:
 
         // Pre-warm audio in background without delaying the chat response
         if (apiKey) {
-          try {
-            const ai = new GoogleGenAI({
-              apiKey,
-              httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
-            });
-            generateVoiceAudio(ai, cleanReply, 'Aoede').catch(() => {});
-          } catch (_) {}
+          generateVoiceAudio(cleanReply, 'Aoede').catch(() => {});
         }
 
         return res.json({
@@ -299,7 +256,7 @@ COMPREHENSIVE RESTAURANT KNOWLEDGE BASE:
               audioUrl = cached.audioUrl;
             } else {
               // Pre-warm audio in background: prompt text response is NEVER delayed!
-              generateVoiceAudio(ai, cleanReply, 'Aoede').catch(() => {});
+              generateVoiceAudio(cleanReply, 'Aoede').catch(() => {});
             }
 
             return res.json({
@@ -327,13 +284,7 @@ COMPREHENSIVE RESTAURANT KNOWLEDGE BASE:
         base64Pcm = cached.base64Pcm;
         audioUrl = cached.audioUrl;
       } else if (apiKey) {
-        try {
-          const ai = new GoogleGenAI({
-            apiKey,
-            httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
-          });
-          generateVoiceAudio(ai, cleanReply, 'Aoede').catch(() => {});
-        } catch (_) {}
+        generateVoiceAudio(cleanReply, 'Aoede').catch(() => {});
       }
 
       return res.json({
@@ -351,302 +302,6 @@ COMPREHENSIVE RESTAURANT KNOWLEDGE BASE:
       });
     }
   });
-
-  // Audio helper: Convert 24kHz 16-bit mono PCM into standard playable WAV format
-  function pcmToWavBuffer(pcmBuffer: Buffer, sampleRate = 24000, numChannels = 1, bitDepth = 16): Buffer {
-    const byteRate = (sampleRate * numChannels * bitDepth) / 8;
-    const blockAlign = (numChannels * bitDepth) / 8;
-    const wavHeader = Buffer.alloc(44);
-    wavHeader.write('RIFF', 0);
-    wavHeader.writeUInt32LE(36 + pcmBuffer.length, 4);
-    wavHeader.write('WAVE', 8);
-    wavHeader.write('fmt ', 12);
-    wavHeader.writeUInt32LE(16, 16);
-    wavHeader.writeUInt16LE(1, 20); // PCM format
-    wavHeader.writeUInt16LE(numChannels, 22);
-    wavHeader.writeUInt32LE(sampleRate, 24);
-    wavHeader.writeUInt32LE(byteRate, 28);
-    wavHeader.writeUInt16LE(blockAlign, 32);
-    wavHeader.writeUInt16LE(bitDepth, 34);
-    wavHeader.write('data', 36);
-    wavHeader.writeUInt32LE(pcmBuffer.length, 40);
-    return Buffer.concat([wavHeader, pcmBuffer]);
-  }
-
-  // Real-time bidirectional Gemini Live conversational voice generation
-  // Uses models/gemini-3.1-flash-live-preview with Aoede voice (The exact natural human voice from the reference app)
-  async function generateLivePcmViaWs(
-    apiKey: string,
-    spokenText: string,
-    voiceName: string = 'Aoede'
-  ): Promise<string | null> {
-    return new Promise((resolve) => {
-      try {
-        const url = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${apiKey}`;
-        const ws = new WebSocket(url);
-        const pcmBuffers: Buffer[] = [];
-        let completed = false;
-
-        const timer = setTimeout(() => {
-          if (!completed) {
-            completed = true;
-            try { ws.close(); } catch (_) {}
-            if (pcmBuffers.length > 0) {
-              const combined = Buffer.concat(pcmBuffers);
-              resolve(combined.toString('base64'));
-            } else {
-              resolve(null);
-            }
-          }
-        }, 8500);
-
-        ws.on('open', () => {
-          ws.send(JSON.stringify({
-            setup: {
-              model: 'models/gemini-3.1-flash-live-preview',
-              generationConfig: {
-                responseModalities: ['AUDIO'],
-                speechConfig: {
-                  voiceConfig: {
-                    prebuiltVoiceConfig: { voiceName: voiceName || 'Aoede' }
-                  }
-                }
-              },
-              systemInstruction: {
-                parts: [{ text: 'You are the voice of Luxury Hotel official AI Concierge. Speak clearly, warmly, and naturally with respectful Indian hospitality voice. Read aloud the exact provided text in Hindi and English. Do not add commentary.' }]
-              }
-            }
-          }));
-        });
-
-        ws.on('message', (raw) => {
-          try {
-            const msg = JSON.parse(raw.toString());
-            if (msg.setupComplete) {
-              ws.send(JSON.stringify({
-                clientContent: {
-                  turns: [{
-                    role: 'user',
-                    parts: [{ text: 'Read aloud: ' + spokenText }]
-                  }],
-                  turnComplete: true
-                }
-              }));
-            }
-            if (msg.serverContent?.modelTurn?.parts) {
-              for (const part of msg.serverContent.modelTurn.parts) {
-                if (part.inlineData?.data) {
-                  try {
-                    const chunkBuf = Buffer.from(part.inlineData.data, 'base64');
-                    if (chunkBuf.length > 0) {
-                      pcmBuffers.push(chunkBuf);
-                    }
-                  } catch (_) {}
-                }
-              }
-            }
-            if (msg.serverContent?.turnComplete) {
-              if (!completed) {
-                completed = true;
-                clearTimeout(timer);
-                try { ws.close(); } catch (_) {}
-                if (pcmBuffers.length > 0) {
-                  const combined = Buffer.concat(pcmBuffers);
-                  resolve(combined.toString('base64'));
-                } else {
-                  resolve(null);
-                }
-              }
-            }
-          } catch (_) {}
-        });
-
-        ws.on('error', () => {
-          if (!completed) {
-            completed = true;
-            clearTimeout(timer);
-            try { ws.close(); } catch (_) {}
-            if (pcmBuffers.length > 0) {
-              const combined = Buffer.concat(pcmBuffers);
-              resolve(combined.toString('base64'));
-            } else {
-              resolve(null);
-            }
-          }
-        });
-
-        ws.on('close', () => {
-          if (!completed) {
-            completed = true;
-            clearTimeout(timer);
-            if (pcmBuffers.length > 0) {
-              const combined = Buffer.concat(pcmBuffers);
-              resolve(combined.toString('base64'));
-            } else {
-              resolve(null);
-            }
-          }
-        });
-      } catch (_) {
-        resolve(null);
-      }
-    });
-  }
-
-  // Generates natural voice audio using Gemini Live Audio (Aoede voice, cached for instant replay)
-  // Self-contained implementation using the configured GEMINI_API_KEY
-  async function generateVoiceAudio(
-    ai: GoogleGenAI,
-    text: string,
-    voiceName: string = 'Aoede'
-  ): Promise<{ base64Pcm: string; audioUrl: string } | null> {
-    try {
-      // Natural Indian conversational speech formatting:
-      // - Greet with Hello instead of repetitive Namaste
-      // - Prevent duplicate "ji ji"
-      // - Indian currency pronunciation ("35 rupaye")
-      // - Soft comma pauses for gentle, unhurried 5-star Indian hospitality rhythm
-      // - Strip markdown, asterisks, brackets, and emojis completely
-      let clean = text
-        .replace(/\bNamaste\s*ji\s*ji\b/gi, 'Hello ji, ')
-        .replace(/\bNamaste\s*ji\b/gi, 'Hello ji, ')
-        .replace(/\bNamaste\b/gi, 'Hello, ')
-        .replace(/\bji\s+ji\b/gi, 'ji')
-        .replace(/\bHello\s+Hello\b/gi, 'Hello')
-        .replace(/(?:₹|Rs\.?|INR|\$)\s*(\d+)/gi, ' $1 rupaye, ')
-        .replace(/\b(\d+)\s*(?:rupees|rupee|rs\.?|\/-)\b/gi, ' $1 rupaye, ')
-        .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{1F900}-\u{1F9FF}\u{1FA70}-\u{1FAFF}]/gu, ' ')
-        .replace(/[*#_~`•–\[\]\(\)]/g, ' ')
-        .replace(/^-\s+/gm, '')
-        .replace(/:\s*/g, ', ')
-        .replace(/https?:\/\/\S+/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-
-      // Ensure Indian English phonetic cadence:
-      if (/^(?:hello|hi|welcome)\b/i.test(clean) && !/^(?:hello\s+ji|namaste\s+ji)/i.test(clean)) {
-        clean = clean.replace(/^(?:hello|hi|welcome)\b[,\s!]*/i, 'Hello ji, ');
-      }
-
-      // Full complete spoken response (up to 2200 characters)
-      let speechSlice = clean;
-      if (clean.length > 2200) {
-        const sub = clean.slice(0, 2200);
-        const lastPunct = Math.max(
-          sub.lastIndexOf('.'),
-          sub.lastIndexOf('!'),
-          sub.lastIndexOf('?')
-        );
-        if (lastPunct > 1600) {
-          speechSlice = sub.slice(0, lastPunct + 1).trim();
-        } else {
-          speechSlice = sub.trim();
-        }
-      }
-      if (!speechSlice) return null;
-
-      const cacheKey = `${voiceName}::${speechSlice}`;
-      if (ttsAudioCache.has(cacheKey)) {
-        return ttsAudioCache.get(cacheKey)!;
-      }
-
-      // If an existing request is already generating this exact text, reuse the Promise
-      if (inFlightTts.has(cacheKey)) {
-        return await inFlightTts.get(cacheKey)!;
-      }
-
-      // Check if cooldown is active due to temporary quota limits
-      if (Date.now() < ttsRateLimitCooldownUntil) {
-        return null;
-      }
-
-      const generatePromise = (async () => {
-        let base64Pcm: string | null = null;
-        const apiKey = process.env.GEMINI_API_KEY;
-
-        // Method 1: Live Bidirectional Gemini Live API (models/gemini-3.1-flash-live-preview)
-        // Authentic human Aoede voice, warm Indian hospitality cadence, zero daily request quota limits
-        if (apiKey) {
-          try {
-            const livePcm = await generateLivePcmViaWs(apiKey, speechSlice, voiceName || 'Aoede');
-            if (livePcm && livePcm.length > 1000) {
-              base64Pcm = livePcm;
-            }
-          } catch (wsErr: any) {
-            console.info('[Live Audio WS Notice]:', String(wsErr?.message || wsErr).slice(0, 100));
-          }
-        }
-
-        // Method 2: Gemini TTS fallback
-        if (!base64Pcm) {
-          const ttsModels = ['gemini-3.8-flash-tts', 'gemini-3.8-flash-lite-tts'];
-          for (const model of ttsModels) {
-            if (base64Pcm) break;
-            try {
-              const ttsPromise = ai.models.generateContent({
-                model,
-                contents: speechSlice,
-                config: {
-                  responseModalities: ['AUDIO'],
-                  speechConfig: {
-                    voiceConfig: {
-                      prebuiltVoiceConfig: { voiceName: voiceName || 'Aoede' },
-                    },
-                  },
-                },
-              });
-
-              const ttsTimeoutPromise = new Promise<null>((resolve) =>
-                setTimeout(() => resolve(null), 8000)
-              );
-
-              const response = await Promise.race([ttsPromise, ttsTimeoutPromise]);
-              const candidateParts = (response as any)?.candidates?.[0]?.content?.parts || [];
-              for (const part of candidateParts) {
-                if (part?.inlineData?.data) {
-                  base64Pcm = part.inlineData.data;
-                  break;
-                }
-              }
-            } catch (_) {}
-          }
-        }
-
-        if (!base64Pcm) {
-          return null;
-        }
-
-        let audioUrl: string;
-        if (base64Pcm.startsWith('UklGR')) {
-          // Standard WAV audio container from Gemini TTS
-          audioUrl = `data:audio/wav;base64,${base64Pcm}`;
-        } else {
-          // Raw PCM stream: encapsulate in WAV header for HTML5 compatibility
-          const pcmBuffer = Buffer.from(base64Pcm, 'base64');
-          const wavBuffer = pcmToWavBuffer(pcmBuffer, 24000, 1, 16);
-          audioUrl = `data:audio/wav;base64,${wavBuffer.toString('base64')}`;
-        }
-
-        const audioData = { base64Pcm, audioUrl };
-        if (ttsAudioCache.size > 500) {
-          const firstKey = ttsAudioCache.keys().next().value;
-          if (firstKey) ttsAudioCache.delete(firstKey);
-        }
-        ttsAudioCache.set(cacheKey, audioData);
-        return audioData;
-      })();
-
-      inFlightTts.set(cacheKey, generatePromise);
-      try {
-        const result = await generatePromise;
-        return result;
-      } finally {
-        inFlightTts.delete(cacheKey);
-      }
-    } catch {
-      return null;
-    }
-  }
 
   // GET handler for tts route (informative status for monitoring & checks)
   app.get(['/api/assistant/tts', '/api/assistant/tts/'], (req, res) => {
@@ -667,7 +322,7 @@ COMPREHENSIVE RESTAURANT KNOWLEDGE BASE:
         return res.status(400).json({ success: false, error: 'Text is required for TTS' });
       }
 
-      const apiKey = process.env.GEMINI_API_KEY;
+      const apiKey = getGeminiApiKey();
       if (!apiKey) {
         return res.status(500).json({
           success: false,
@@ -677,21 +332,12 @@ COMPREHENSIVE RESTAURANT KNOWLEDGE BASE:
         });
       }
 
-      const ai = new GoogleGenAI({
-        apiKey: apiKey,
-        httpOptions: {
-          headers: {
-            'User-Agent': 'aistudio-build'
-          }
-        }
-      });
-
-      const audioData = await generateVoiceAudio(ai, text, voice || 'Aoede');
+      const audioData = await generateVoiceAudio(text, voice || 'Aoede');
       if (!audioData || !audioData.base64Pcm) {
         return res.status(200).json({
           success: false,
           rateLimited: true,
-          error: 'Voice audio generation is currently cooling down. Tap Listen to try again.',
+          error: 'Voice audio generation is currently busy. Tap Listen to try again.',
           base64Pcm: null,
           audioUrl: null
         });
@@ -742,7 +388,7 @@ COMPREHENSIVE RESTAURANT KNOWLEDGE BASE:
         httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
       });
 
-      const audioData = await generateVoiceAudio(ai, text, voiceName);
+      const audioData = await generateVoiceAudio(text, voiceName);
       if (audioData?.base64Pcm) {
         res.write(`data: ${JSON.stringify({ pcmChunk: audioData.base64Pcm, audioUrl: audioData.audioUrl, done: true })}\n\n`);
       } else {
@@ -819,19 +465,19 @@ COMPREHENSIVE RESTAURANT KNOWLEDGE BASE:
           });
           // Pre-warm the welcome speech first
           const welcomeSpeechText = 'Namaste ji! Welcome to Luxury Hotel. Main Luxury Hotel ka official 24/7 AI Concierge Assistant hoon. Mera kaam yahan aapki har tarah se poori madad aur dil se seva karna hai. Kahiye, main aapki kya seva karoon?';
-          await generateVoiceAudio(ai, welcomeSpeechText, 'Aoede').catch(() => {});
+          await generateVoiceAudio(welcomeSpeechText, 'Aoede').catch(() => {});
 
           // Pre-warm table booking interactive phrases
           const bookingPromptText = 'Zaroor! Yahan aap apni reservation details fill karein, main turant aapki table arrange karwati hoon.';
           const bookingConfirmText = 'Congratulations! Aapki table reservation request safaltapoorvak bhej di gayi hai. Hamari luxury concierge team jaldi hi aapki table confirm kar degi. Luxury Hotel mein aapka swagat hai!';
-          await generateVoiceAudio(ai, bookingPromptText, 'Aoede').catch(() => {});
-          await generateVoiceAudio(ai, bookingConfirmText, 'Aoede').catch(() => {});
+          await generateVoiceAudio(bookingPromptText, 'Aoede').catch(() => {});
+          await generateVoiceAudio(bookingConfirmText, 'Aoede').catch(() => {});
 
           // Sequentially pre-warm popular user queries with gentle pacing
           for (const q of queriesToPrewarm) {
             const raw = generateComprehensiveFallbackReply(q);
             const clean = sanitizeText(raw);
-            await generateVoiceAudio(ai, clean, 'Aoede').catch(() => {});
+            await generateVoiceAudio(clean, 'Aoede').catch(() => {});
             await new Promise((r) => setTimeout(r, 600));
           }
           console.log('[Concierge Voice] All common voice responses pre-warmed successfully in memory cache!');

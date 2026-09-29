@@ -533,9 +533,33 @@ export const AssistantModal: React.FC<AssistantModalProps> = ({ isOpen, onClose 
     setAudioLoadingId(null);
   };
 
+  // Helper to convert base64 audio/wav into a native Blob URL for bulletproof browser playback
+  const toBlobUrl = (source: string, mimeType = 'audio/wav'): string => {
+    try {
+      if (typeof window === 'undefined') return source;
+      let clean = source.trim();
+      const comma = clean.indexOf(',');
+      if (comma !== -1 && clean.slice(0, comma).includes('base64')) {
+        clean = clean.slice(comma + 1);
+      }
+      clean = clean.replace(/\s+/g, '').replace(/-/g, '+').replace(/_/g, '/');
+      const binStr = atob(clean);
+      const len = binStr.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binStr.charCodeAt(i);
+      }
+      const blob = new Blob([bytes], { type: mimeType });
+      return URL.createObjectURL(blob);
+    } catch {
+      return source;
+    }
+  };
+
   // Direct PCM & WAV Audio Player using Web Audio API (Aoede voice)
   const playAudio = async (base64Pcm?: string | null, audioUrl?: string | null, messageId?: string) => {
     stopSpeaking();
+    unlockAudio();
 
     // Primary: Web Audio API direct PCM/WAV playback
     if (base64Pcm && base64Pcm.trim().length > 0) {
@@ -546,50 +570,40 @@ export const AssistantModal: React.FC<AssistantModalProps> = ({ isOpen, onClose 
         });
         return;
       } catch (err: any) {
-        console.error('Web Audio API playback error, trying HTML5 audio fallback:', err);
-        if (audioUrl) {
-          try {
-            const audio = new Audio(audioUrl);
-            audioRef.current = audio;
-            audio.onended = () => {
-              setSpeakingMessageId(null);
-              audioRef.current = null;
-            };
-            audio.onerror = () => {
-              setSpeakingMessageId(null);
-              audioRef.current = null;
-            };
-            await audio.play();
-            return;
-          } catch (_) {}
-        }
-        setSpeakingMessageId(null);
+        console.error('Web Audio API playback notice, utilizing HTML5 audio fallback:', err);
       }
-      return;
     }
 
-    // Secondary fallback: HTML5 Audio if wav URL provided
-    if (audioUrl) {
+    // Secondary fallback: HTML5 Audio via native Blob Object URL
+    const targetSource = audioUrl || (base64Pcm ? `data:audio/wav;base64,${base64Pcm}` : null);
+    if (targetSource) {
       setSpeakingMessageId(messageId || 'active');
-      const audio = new Audio(audioUrl);
-      audioRef.current = audio;
-      audio.onended = () => {
-        setSpeakingMessageId(null);
-        audioRef.current = null;
-      };
-      audio.onerror = (e) => {
-        console.error('Audio playback error:', e);
-        setSpeakingMessageId(null);
-        audioRef.current = null;
-      };
+      const blobUrl = toBlobUrl(targetSource, 'audio/wav');
       try {
+        const audio = new Audio(blobUrl);
+        audioRef.current = audio;
+        const cleanup = () => {
+          setSpeakingMessageId(null);
+          audioRef.current = null;
+          if (blobUrl.startsWith('blob:')) {
+            URL.revokeObjectURL(blobUrl);
+          }
+        };
+        audio.onended = cleanup;
+        audio.onerror = (e) => {
+          console.error('Audio playback error:', e);
+          cleanup();
+        };
         await audio.play();
+        return;
       } catch (err) {
         console.error('Audio play error:', err);
         setSpeakingMessageId(null);
         audioRef.current = null;
+        if (blobUrl.startsWith('blob:')) {
+          URL.revokeObjectURL(blobUrl);
+        }
       }
-      return;
     }
 
     setSpeakingMessageId(null);
