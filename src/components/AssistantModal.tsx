@@ -650,7 +650,7 @@ export const AssistantModal: React.FC<AssistantModalProps> = ({ isOpen, onClose 
       });
 
       const data = result.data;
-      if (result.ok && data?.success && data?.base64Pcm) {
+      if (result.ok && data?.success && (data?.base64Pcm || data?.audioUrl)) {
         if (messageId) {
           setMessages((prev) =>
             prev.map((m) =>
@@ -660,7 +660,7 @@ export const AssistantModal: React.FC<AssistantModalProps> = ({ isOpen, onClose 
             )
           );
         }
-        await playAudio(data.base64Pcm, data.audioUrl, messageId);
+        await playAudio(data.base64Pcm || null, data.audioUrl || null, messageId);
         return;
       }
 
@@ -957,7 +957,7 @@ export const AssistantModal: React.FC<AssistantModalProps> = ({ isOpen, onClose 
       setLoading(false);
 
       // Instant speech playback: If audio is already included in the chat payload, play with 0ms delay!
-      if (autoVoice && result.data.base64Pcm) {
+      if (autoVoice && (result.data.base64Pcm || result.data.audioUrl)) {
         playAudio(result.data.base64Pcm, result.data.audioUrl, assistantMessageId);
       } else if (autoVoice && replyText) {
         // Fallback: fetch voice audio via /api/assistant/tts

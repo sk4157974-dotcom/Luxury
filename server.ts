@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
+import WebSocket from 'ws';
 import { RESTAURANT_CONFIG } from './src/config/restaurant';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -372,7 +373,127 @@ COMPREHENSIVE RESTAURANT KNOWLEDGE BASE:
     return Buffer.concat([wavHeader, pcmBuffer]);
   }
 
-  // Generates natural voice audio using Gemini TTS (Aoede voice, cached for instant replay)
+  // Real-time bidirectional Gemini Live conversational voice generation
+  // Uses models/gemini-3.1-flash-live-preview with Aoede voice (The exact natural human voice from the reference app)
+  async function generateLivePcmViaWs(
+    apiKey: string,
+    spokenText: string,
+    voiceName: string = 'Aoede'
+  ): Promise<string | null> {
+    return new Promise((resolve) => {
+      try {
+        const url = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${apiKey}`;
+        const ws = new WebSocket(url);
+        const pcmBuffers: Buffer[] = [];
+        let completed = false;
+
+        const timer = setTimeout(() => {
+          if (!completed) {
+            completed = true;
+            try { ws.close(); } catch (_) {}
+            if (pcmBuffers.length > 0) {
+              const combined = Buffer.concat(pcmBuffers);
+              resolve(combined.toString('base64'));
+            } else {
+              resolve(null);
+            }
+          }
+        }, 8500);
+
+        ws.on('open', () => {
+          ws.send(JSON.stringify({
+            setup: {
+              model: 'models/gemini-3.1-flash-live-preview',
+              generationConfig: {
+                responseModalities: ['AUDIO'],
+                speechConfig: {
+                  voiceConfig: {
+                    prebuiltVoiceConfig: { voiceName: voiceName || 'Aoede' }
+                  }
+                }
+              },
+              systemInstruction: {
+                parts: [{ text: 'You are the voice of Luxury Hotel official AI Concierge. Speak clearly, warmly, and naturally with respectful Indian hospitality voice. Read aloud the exact provided text in Hindi and English. Do not add commentary.' }]
+              }
+            }
+          }));
+        });
+
+        ws.on('message', (raw) => {
+          try {
+            const msg = JSON.parse(raw.toString());
+            if (msg.setupComplete) {
+              ws.send(JSON.stringify({
+                clientContent: {
+                  turns: [{
+                    role: 'user',
+                    parts: [{ text: 'Read aloud: ' + spokenText }]
+                  }],
+                  turnComplete: true
+                }
+              }));
+            }
+            if (msg.serverContent?.modelTurn?.parts) {
+              for (const part of msg.serverContent.modelTurn.parts) {
+                if (part.inlineData?.data) {
+                  try {
+                    const chunkBuf = Buffer.from(part.inlineData.data, 'base64');
+                    if (chunkBuf.length > 0) {
+                      pcmBuffers.push(chunkBuf);
+                    }
+                  } catch (_) {}
+                }
+              }
+            }
+            if (msg.serverContent?.turnComplete) {
+              if (!completed) {
+                completed = true;
+                clearTimeout(timer);
+                try { ws.close(); } catch (_) {}
+                if (pcmBuffers.length > 0) {
+                  const combined = Buffer.concat(pcmBuffers);
+                  resolve(combined.toString('base64'));
+                } else {
+                  resolve(null);
+                }
+              }
+            }
+          } catch (_) {}
+        });
+
+        ws.on('error', () => {
+          if (!completed) {
+            completed = true;
+            clearTimeout(timer);
+            try { ws.close(); } catch (_) {}
+            if (pcmBuffers.length > 0) {
+              const combined = Buffer.concat(pcmBuffers);
+              resolve(combined.toString('base64'));
+            } else {
+              resolve(null);
+            }
+          }
+        });
+
+        ws.on('close', () => {
+          if (!completed) {
+            completed = true;
+            clearTimeout(timer);
+            if (pcmBuffers.length > 0) {
+              const combined = Buffer.concat(pcmBuffers);
+              resolve(combined.toString('base64'));
+            } else {
+              resolve(null);
+            }
+          }
+        });
+      } catch (_) {
+        resolve(null);
+      }
+    });
+  }
+
+  // Generates natural voice audio using Gemini Live Audio (Aoede voice, cached for instant replay)
   // Self-contained implementation using the configured GEMINI_API_KEY
   async function generateVoiceAudio(
     ai: GoogleGenAI,
@@ -441,51 +562,54 @@ COMPREHENSIVE RESTAURANT KNOWLEDGE BASE:
 
       const generatePromise = (async () => {
         let base64Pcm: string | null = null;
+        const apiKey = process.env.GEMINI_API_KEY;
 
-        // Dedicated official Gemini TTS models: fast, self-contained, exact Aoede voice
-        const ttsModels = ['gemini-3.8-flash-lite-tts', 'gemini-3.8-flash-tts'];
-        let allFailedRateLimit = true;
-
-        for (const model of ttsModels) {
-          if (base64Pcm) break;
+        // Method 1: Live Bidirectional Gemini Live API (models/gemini-3.1-flash-live-preview)
+        // Authentic human Aoede voice, warm Indian hospitality cadence, zero daily request quota limits
+        if (apiKey) {
           try {
-            const ttsPromise = ai.models.generateContent({
-              model,
-              contents: speechSlice,
-              config: {
-                responseModalities: ['AUDIO'],
-                speechConfig: {
-                  voiceConfig: {
-                    prebuiltVoiceConfig: { voiceName: voiceName || 'Aoede' },
-                  },
-                },
-              },
-            });
-
-            // Fast 10-second timeout avoids Netlify function timeouts
-            const ttsTimeoutPromise = new Promise<null>((resolve) =>
-              setTimeout(() => resolve(null), 10000)
-            );
-
-            const response = await Promise.race([ttsPromise, ttsTimeoutPromise]);
-            const candidateParts = (response as any)?.candidates?.[0]?.content?.parts || [];
-            for (const part of candidateParts) {
-              if (part?.inlineData?.data) {
-                base64Pcm = part.inlineData.data;
-                allFailedRateLimit = false;
-                break;
-              }
+            const livePcm = await generateLivePcmViaWs(apiKey, speechSlice, voiceName || 'Aoede');
+            if (livePcm && livePcm.length > 1000) {
+              base64Pcm = livePcm;
             }
-          } catch (mErr: any) {
-            const rawErr = String(mErr?.message || mErr || '');
-            if (!rawErr.includes('429') && !rawErr.includes('RESOURCE_EXHAUSTED')) {
-              allFailedRateLimit = false;
-            }
+          } catch (wsErr: any) {
+            console.info('[Live Audio WS Notice]:', String(wsErr?.message || wsErr).slice(0, 100));
           }
         }
 
-        if (!base64Pcm && allFailedRateLimit) {
-          ttsRateLimitCooldownUntil = Date.now() + 10000;
+        // Method 2: Gemini TTS fallback
+        if (!base64Pcm) {
+          const ttsModels = ['gemini-3.8-flash-tts', 'gemini-3.8-flash-lite-tts'];
+          for (const model of ttsModels) {
+            if (base64Pcm) break;
+            try {
+              const ttsPromise = ai.models.generateContent({
+                model,
+                contents: speechSlice,
+                config: {
+                  responseModalities: ['AUDIO'],
+                  speechConfig: {
+                    voiceConfig: {
+                      prebuiltVoiceConfig: { voiceName: voiceName || 'Aoede' },
+                    },
+                  },
+                },
+              });
+
+              const ttsTimeoutPromise = new Promise<null>((resolve) =>
+                setTimeout(() => resolve(null), 8000)
+              );
+
+              const response = await Promise.race([ttsPromise, ttsTimeoutPromise]);
+              const candidateParts = (response as any)?.candidates?.[0]?.content?.parts || [];
+              for (const part of candidateParts) {
+                if (part?.inlineData?.data) {
+                  base64Pcm = part.inlineData.data;
+                  break;
+                }
+              }
+            } catch (_) {}
+          }
         }
 
         if (!base64Pcm) {
