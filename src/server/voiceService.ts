@@ -106,7 +106,10 @@ export async function streamLivePcmViaWs(
           completed = true;
           if (idleTimer) clearTimeout(idleTimer);
           if (maxTimer) clearTimeout(maxTimer);
-          try { ws.close(); } catch (_) {}
+          try {
+            ws.removeAllListeners();
+            ws.terminate();
+          } catch (_) {}
           if (pcmBuffers.length > 0) {
             const combined = Buffer.concat(pcmBuffers);
             const base64Pcm = combined.toString('base64');
@@ -123,13 +126,13 @@ export async function streamLivePcmViaWs(
         if (idleTimer) clearTimeout(idleTimer);
         idleTimer = setTimeout(() => {
           finish();
-        }, 6000);
+        }, 1500);
       };
 
-      // 45-second overall safety limit for long responses (never prematurely truncates at 8.5s)
+      // 30-second overall safety limit for long responses
       const maxTimer = setTimeout(() => {
         finish();
-      }, 45000);
+      }, 30000);
 
       ws.on('open', () => {
         ws.send(JSON.stringify({
@@ -250,13 +253,13 @@ export async function generateVoiceAudio(
         console.info('[Live Audio WS Notice]:', String(wsErr?.message || wsErr).slice(0, 100));
       }
 
-      // Method 2: Gemini TTS fallback
+      // Method 2: Gemini TTS fallback using official gemini-2.5-flash-preview-tts
       try {
         const ai = new GoogleGenAI({
           apiKey,
           httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
         });
-        const ttsModels = ['gemini-3.8-flash-tts', 'gemini-3.8-flash-lite-tts'];
+        const ttsModels = ['gemini-2.5-flash-preview-tts'];
         let base64Pcm: string | null = null;
         for (const model of ttsModels) {
           if (base64Pcm) break;
@@ -275,7 +278,7 @@ export async function generateVoiceAudio(
             });
 
             const ttsTimeoutPromise = new Promise<null>((resolve) =>
-              setTimeout(() => resolve(null), 15000)
+              setTimeout(() => resolve(null), 10000)
             );
 
             const response = await Promise.race([ttsPromise, ttsTimeoutPromise]);

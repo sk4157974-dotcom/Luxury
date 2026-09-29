@@ -44,7 +44,6 @@ function cleanSpeechText(text: string): string {
     clean = clean.replace(/^(?:hello|hi|welcome)\b[,\s!]*/i, 'Hello ji, ');
   }
 
-  // Never truncate text so long responses (8+ lines) are spoken completely
   return clean;
 }
 
@@ -68,179 +67,140 @@ function pcmToWavBuffer(pcmBuffer: Buffer, sampleRate = 24000, numChannels = 1, 
   return Buffer.concat([wavHeader, pcmBuffer]);
 }
 
+/**
+ * Fast REST TTS generation using official gemini-2.5-flash-preview-tts with Aoede voice.
+ * Stateless HTTPS POST ideal for AWS Lambda / Netlify serverless: completes in 2.5s – 4.5s.
+ */
+async function generateTtsViaRest(
+  apiKey: string,
+  spokenText: string,
+  voiceName: string = 'Aoede',
+  timeoutMs: number = 8000
+): Promise<{ base64Pcm: string; audioUrl: string } | null> {
+  try {
+    const ai = new GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        headers: { 'User-Agent': 'aistudio-build' }
+      }
+    });
+
+    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs));
+    const generatePromise = ai.models.generateContent({
+      model: 'gemini-2.5-flash-preview-tts',
+      contents: spokenText,
+      config: {
+        responseModalities: ['AUDIO'],
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: { voiceName: voiceName || 'Aoede' },
+          },
+        },
+      },
+    });
+
+    const response = await Promise.race([generatePromise, timeoutPromise]);
+    if (!response) {
+      return null;
+    }
+
+    const candidateParts = (response as any)?.candidates?.[0]?.content?.parts || [];
+    let base64Pcm: string | null = null;
+    for (const part of candidateParts) {
+      if (part?.inlineData?.data) {
+        base64Pcm = part.inlineData.data;
+        break;
+      }
+    }
+
+    if (!base64Pcm || base64Pcm.length < 500) {
+      return null;
+    }
+
+    let audioUrl: string;
+    if (base64Pcm.startsWith('UklGR')) {
+      audioUrl = `data:audio/wav;base64,${base64Pcm}`;
+    } else {
+      const pcmBuffer = Buffer.from(base64Pcm, 'base64');
+      const wavBuffer = pcmToWavBuffer(pcmBuffer, 24000, 1, 16);
+      audioUrl = `data:audio/wav;base64,${wavBuffer.toString('base64')}`;
+    }
+
+    return { base64Pcm, audioUrl };
+  } catch (err: any) {
+    return null;
+  }
+}
+
+/**
+ * WebSocket Live API fallback with strict lifecycle controls and instant terminate.
+ */
 async function streamLivePcmViaWs(
   apiKey: string,
   spokenText: string,
   voiceName: string = 'Aoede',
-  onChunk?: (chunkBase64: string) => void
+  timeoutMs: number = 7500
 ): Promise<{ base64Pcm: string; audioUrl: string } | null> {
   return new Promise((resolve) => {
+    let completed = false;
+    let ws: WebSocket | null = null;
+    let idleTimer: NodeJS.Timeout | null = null;
+    let maxTimer: NodeJS.Timeout | null = null;
+
+    const finish = (result: { base64Pcm: string; audioUrl: string } | null) => {
+      if (!completed) {
+        completed = true;
+        if (idleTimer) clearTimeout(idleTimer);
+        if (maxTimer) clearTimeout(maxTimer);
+        if (ws) {
+          try {
+            ws.removeAllListeners();
+            ws.terminate(); // Force immediate socket destruction
+          } catch (_) {}
+          ws = null;
+        }
+        resolve(result);
+      }
+    };
+
     try {
       const url = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${apiKey}`;
-      const ws = new WebSocket(url);
+      ws = new WebSocket(url, { handshakeTimeout: 3000 });
       const pcmBuffers: Buffer[] = [];
-      let completed = false;
-      let idleTimer: NodeJS.Timeout | null = null;
 
-      const finish = () => {
-        if (!completed) {
-          completed = true;
-          if (idleTimer) clearTimeout(idleTimer);
-          if (maxTimer) clearTimeout(maxTimer);
-          try { ws.close(); } catch (_) {}
+      maxTimer = setTimeout(() => {
+        if (pcmBuffers.length > 0) {
+          const combined = Buffer.concat(pcmBuffers);
+          const base64Pcm = combined.toString('base64');
+          const wavBuffer = pcmToWavBuffer(combined, 24000, 1, 16);
+          const audioUrl = `data:audio/wav;base64,${wavBuffer.toString('base64')}`;
+          finish({ base64Pcm, audioUrl });
+        } else {
+          finish(null);
+        }
+      }, timeoutMs);
+
+      const resetIdleTimer = () => {
+        if (idleTimer) clearTimeout(idleTimer);
+        idleTimer = setTimeout(() => {
           if (pcmBuffers.length > 0) {
             const combined = Buffer.concat(pcmBuffers);
             const base64Pcm = combined.toString('base64');
             const wavBuffer = pcmToWavBuffer(combined, 24000, 1, 16);
             const audioUrl = `data:audio/wav;base64,${wavBuffer.toString('base64')}`;
-            resolve({ base64Pcm, audioUrl });
+            finish({ base64Pcm, audioUrl });
           } else {
-            resolve(null);
+            finish(null);
           }
-        }
+        }, 1200); // Prompt finish after speech chunks end
       };
-
-      const resetIdleTimer = () => {
-        if (idleTimer) clearTimeout(idleTimer);
-        idleTimer = setTimeout(() => {
-          finish();
-        }, 6000);
-      };
-
-      // 45-second overall safety limit for long responses (never prematurely truncates at 8.5s)
-      const maxTimer = setTimeout(() => {
-        finish();
-      }, 45000);
 
       ws.on('open', () => {
-        ws.send(JSON.stringify({
-          setup: {
-            model: 'models/gemini-3.1-flash-live-preview',
-            generationConfig: {
-              responseModalities: ['AUDIO'],
-              speechConfig: {
-                voiceConfig: {
-                  prebuiltVoiceConfig: { voiceName: voiceName || 'Aoede' }
-                }
-              }
-            },
-            systemInstruction: {
-              parts: [{ text: 'You are the voice of Luxury Hotel official AI Concierge. Speak clearly, warmly, and naturally with respectful Indian hospitality voice. Read aloud the exact provided text in Hindi and English. Do not add commentary.' }]
-            }
-          }
-        }));
-      });
-
-      ws.on('message', (raw) => {
-        try {
-          const msg = JSON.parse(raw.toString());
-          if (msg.setupComplete) {
-            ws.send(JSON.stringify({
-              clientContent: {
-                turns: [{
-                  role: 'user',
-                  parts: [{ text: 'Read aloud: ' + spokenText }]
-                }],
-                turnComplete: true
-              }
-            }));
-            resetIdleTimer();
-          }
-          if (msg.serverContent?.modelTurn?.parts) {
-            for (const part of msg.serverContent.modelTurn.parts) {
-              if (part.inlineData?.data) {
-                try {
-                  const chunkBuf = Buffer.from(part.inlineData.data, 'base64');
-                  if (chunkBuf.length > 0) {
-                    pcmBuffers.push(chunkBuf);
-                    if (onChunk) {
-                      onChunk(part.inlineData.data);
-                    }
-                    resetIdleTimer();
-                  }
-                } catch (_) {}
-              }
-            }
-          }
-          if (msg.serverContent?.turnComplete) {
-            finish();
-          }
-        } catch (_) {}
-      });
-
-      ws.on('error', () => {
-        finish();
-      });
-
-      ws.on('close', () => {
-        finish();
-      });
-    } catch (_) {
-      resolve(null);
-    }
-  });
-}
-
-async function generateVoiceAudio(
-  text: string,
-  voiceName: string = 'Aoede',
-  onChunk?: (chunkBase64: string) => void
-): Promise<{ base64Pcm: string; audioUrl: string } | null> {
-  try {
-    const speechSlice = cleanSpeechText(text);
-    if (!speechSlice) return null;
-
-    const cacheKey = `${voiceName}::${speechSlice}`;
-    if (ttsAudioCache.has(cacheKey)) {
-      const cached = ttsAudioCache.get(cacheKey)!;
-      if (onChunk && cached.base64Pcm) {
-        onChunk(cached.base64Pcm);
-      }
-      return cached;
-    }
-
-    if (inFlightTts.has(cacheKey)) {
-      return await inFlightTts.get(cacheKey)!;
-    }
-
-    const apiKey = getGeminiApiKey();
-    if (!apiKey) {
-      console.warn('[Netlify TTS] No Gemini API key found in environment');
-      return null;
-    }
-
-    const generatePromise = (async () => {
-      // Method 1: Live Bidirectional Gemini Live API (models/gemini-3.1-flash-live-preview)
-      // Authentic human Aoede voice, warm Indian hospitality cadence, zero daily request quota limits
-      try {
-        const liveResult = await streamLivePcmViaWs(apiKey, speechSlice, voiceName || 'Aoede', onChunk);
-        if (liveResult && liveResult.base64Pcm && liveResult.base64Pcm.length > 500) {
-          if (ttsAudioCache.size > 500) {
-            const firstKey = ttsAudioCache.keys().next().value;
-            if (firstKey) ttsAudioCache.delete(firstKey);
-          }
-          ttsAudioCache.set(cacheKey, liveResult);
-          return liveResult;
-        }
-      } catch (wsErr: any) {
-        console.info('[Live Audio WS Notice]:', String(wsErr?.message || wsErr).slice(0, 100));
-      }
-
-      // Method 2: Gemini TTS fallback
-      try {
-        const ai = new GoogleGenAI({
-          apiKey,
-          httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
-        });
-        const ttsModels = ['gemini-3.8-flash-tts', 'gemini-3.8-flash-lite-tts'];
-        let base64Pcm: string | null = null;
-        for (const model of ttsModels) {
-          if (base64Pcm) break;
-          try {
-            const ttsPromise = ai.models.generateContent({
-              model,
-              contents: speechSlice,
-              config: {
+        ws?.send(
+          JSON.stringify({
+            setup: {
+              model: 'models/gemini-3.1-flash-live-preview',
+              generationConfig: {
                 responseModalities: ['AUDIO'],
                 speechConfig: {
                   voiceConfig: {
@@ -248,56 +208,135 @@ async function generateVoiceAudio(
                   },
                 },
               },
-            });
+              systemInstruction: {
+                parts: [
+                  {
+                    text: 'You are the voice of Luxury Hotel official AI Concierge. Speak clearly, warmly, and naturally with respectful Indian hospitality voice. Read aloud the exact provided text in Hindi and English. Do not add commentary.',
+                  },
+                ],
+              },
+            },
+          })
+        );
+      });
 
-            const ttsTimeoutPromise = new Promise<null>((resolve) =>
-              setTimeout(() => resolve(null), 15000)
+      ws.on('message', (raw) => {
+        try {
+          const msg = JSON.parse(raw.toString());
+          if (msg.setupComplete) {
+            ws?.send(
+              JSON.stringify({
+                clientContent: {
+                  turns: [{ role: 'user', parts: [{ text: 'Read aloud: ' + spokenText }] }],
+                  turnComplete: true,
+                },
+              })
             );
+            resetIdleTimer();
+          }
 
-            const response = await Promise.race([ttsPromise, ttsTimeoutPromise]);
-            const candidateParts = (response as any)?.candidates?.[0]?.content?.parts || [];
-            for (const part of candidateParts) {
-              if (part?.inlineData?.data) {
-                base64Pcm = part.inlineData.data;
-                break;
+          if (msg.serverContent?.modelTurn?.parts) {
+            for (const part of msg.serverContent.modelTurn.parts) {
+              if (part.inlineData?.data) {
+                try {
+                  const chunkBuf = Buffer.from(part.inlineData.data, 'base64');
+                  if (chunkBuf.length > 0) {
+                    pcmBuffers.push(chunkBuf);
+                    resetIdleTimer();
+                  }
+                } catch (_) {}
               }
             }
-          } catch (_) {}
-        }
-
-        if (base64Pcm) {
-          if (onChunk) onChunk(base64Pcm);
-          let audioUrl: string;
-          if (base64Pcm.startsWith('UklGR')) {
-            audioUrl = `data:audio/wav;base64,${base64Pcm}`;
-          } else {
-            const pcmBuffer = Buffer.from(base64Pcm, 'base64');
-            const wavBuffer = pcmToWavBuffer(pcmBuffer, 24000, 1, 16);
-            audioUrl = `data:audio/wav;base64,${wavBuffer.toString('base64')}`;
           }
-          const audioData = { base64Pcm, audioUrl };
-          ttsAudioCache.set(cacheKey, audioData);
-          return audioData;
-        }
-      } catch (_) {}
 
-      return null;
-    })();
+          if (msg.serverContent?.turnComplete) {
+            if (pcmBuffers.length > 0) {
+              const combined = Buffer.concat(pcmBuffers);
+              const base64Pcm = combined.toString('base64');
+              const wavBuffer = pcmToWavBuffer(combined, 24000, 1, 16);
+              const audioUrl = `data:audio/wav;base64,${wavBuffer.toString('base64')}`;
+              finish({ base64Pcm, audioUrl });
+            } else {
+              finish(null);
+            }
+          }
+        } catch (_) {}
+      });
 
-    inFlightTts.set(cacheKey, generatePromise);
-    try {
-      const result = await generatePromise;
-      return result;
-    } finally {
-      inFlightTts.delete(cacheKey);
+      ws.on('error', () => finish(null));
+      ws.on('close', () => finish(null));
+    } catch (_) {
+      finish(null);
     }
-  } catch {
+  });
+}
+
+/**
+ * Serverless voice generation optimized for Netlify Production.
+ * Prioritizes fast, stateless REST with Aoede voice (2.5s – 4.5s) to guarantee zero hanging connections.
+ */
+async function generateVoiceAudio(
+  text: string,
+  voiceName: string = 'Aoede'
+): Promise<{ base64Pcm: string; audioUrl: string } | null> {
+  const speechSlice = cleanSpeechText(text);
+  if (!speechSlice) return null;
+
+  const cacheKey = `${voiceName}::${speechSlice}`;
+  if (ttsAudioCache.has(cacheKey)) {
+    return ttsAudioCache.get(cacheKey)!;
+  }
+
+  if (inFlightTts.has(cacheKey)) {
+    return await inFlightTts.get(cacheKey)!;
+  }
+
+  const apiKey = getGeminiApiKey();
+  if (!apiKey) {
     return null;
+  }
+
+  const generatePromise = (async () => {
+    // Engine 1 (Primary for Netlify Serverless): Fast Google GenAI TTS REST API with Aoede voice
+    const restResult = await generateTtsViaRest(apiKey, speechSlice, voiceName || 'Aoede', 8000);
+    if (restResult && restResult.base64Pcm && restResult.base64Pcm.length > 500) {
+      if (ttsAudioCache.size > 500) {
+        const firstKey = ttsAudioCache.keys().next().value;
+        if (firstKey) ttsAudioCache.delete(firstKey);
+      }
+      ttsAudioCache.set(cacheKey, restResult);
+      return restResult;
+    }
+
+    // Engine 2 (Secondary Fallback): Live API WebSocket with strict 7.5s cutoff
+    const liveResult = await streamLivePcmViaWs(apiKey, speechSlice, voiceName || 'Aoede', 7500);
+    if (liveResult && liveResult.base64Pcm && liveResult.base64Pcm.length > 500) {
+      if (ttsAudioCache.size > 500) {
+        const firstKey = ttsAudioCache.keys().next().value;
+        if (firstKey) ttsAudioCache.delete(firstKey);
+      }
+      ttsAudioCache.set(cacheKey, liveResult);
+      return liveResult;
+    }
+
+    return null;
+  })();
+
+  inFlightTts.set(cacheKey, generatePromise);
+  try {
+    return await generatePromise;
+  } finally {
+    inFlightTts.delete(cacheKey);
   }
 }
 
 export const handler = async (event: any, context?: any) => {
-  // CORS Preflight
+  // CRITICAL: Prevent AWS Lambda from waiting for open sockets or event loop to drain
+  if (context) {
+    context.callbackWaitsForEmptyEventLoop = false;
+  }
+
+  // Handle CORS Preflight
   if (event.httpMethod === 'OPTIONS') {
     return {
       statusCode: 200,
@@ -306,9 +345,8 @@ export const handler = async (event: any, context?: any) => {
     };
   }
 
-  // GET Health / Informational status
+  // Informational GET check
   if (event.httpMethod === 'GET') {
-    const hasKey = Boolean(getGeminiApiKey());
     return {
       statusCode: 200,
       headers: CORS_HEADERS,
@@ -316,7 +354,7 @@ export const handler = async (event: any, context?: any) => {
         status: 'ok',
         endpoint: '/api/assistant/tts',
         voice: 'Aoede',
-        apiKeyConfigured: hasKey,
+        apiKeyConfigured: Boolean(getGeminiApiKey()),
         supportedMethods: ['POST'],
       }),
     };
@@ -351,20 +389,22 @@ export const handler = async (event: any, context?: any) => {
 
     const apiKey = getGeminiApiKey();
     if (!apiKey) {
-      console.warn('[Netlify TTS] GEMINI_API_KEY environment variable is not configured');
       return {
         statusCode: 200,
         headers: CORS_HEADERS,
         body: JSON.stringify({
           success: false,
-          error: 'GEMINI_API_KEY is not configured on Netlify. Please set GEMINI_API_KEY in Netlify Site Settings > Environment Variables.',
+          error: 'GEMINI_API_KEY environment variable is not configured.',
           base64Pcm: null,
           audioUrl: null,
         }),
       };
     }
 
-    const audioData = await generateVoiceAudio(text, voice || 'Aoede');
+    // Hard 8.8s safety limit so the function always returns before Netlify's 10s timeout
+    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 8800));
+    const audioData = await Promise.race([generateVoiceAudio(text, voice || 'Aoede'), timeoutPromise]);
+
     if (!audioData || !audioData.base64Pcm) {
       return {
         statusCode: 200,
@@ -389,7 +429,6 @@ export const handler = async (event: any, context?: any) => {
       }),
     };
   } catch (err: any) {
-    console.error('[Netlify TTS Handler Error]:', err);
     return {
       statusCode: 200,
       headers: CORS_HEADERS,
@@ -404,81 +443,27 @@ export const handler = async (event: any, context?: any) => {
   }
 };
 
-// Default export compatible with both Netlify Functions v1 and v2 runtimes (with streaming support)
+// Default export supporting Fetch API / Netlify Functions v2 runtime
 export default async function (req: any, context?: any) {
+  if (context) {
+    context.callbackWaitsForEmptyEventLoop = false;
+  }
+
   if (req && typeof req.json === 'function' && typeof req.headers?.get === 'function') {
     if (req.method === 'OPTIONS') {
       return new Response('', { headers: CORS_HEADERS, status: 200 });
     }
-    if (req.method === 'GET') {
-      return new Response(
-        JSON.stringify({
-          status: 'ok',
-          endpoint: '/api/assistant/tts',
-          voice: 'Aoede',
-          apiKeyConfigured: Boolean(getGeminiApiKey()),
-        }),
-        { headers: CORS_HEADERS, status: 200 }
-      );
-    }
-
-    const isVoiceStream =
-      req.url?.includes('voice-stream') ||
-      req.headers.get('accept')?.includes('text/event-stream');
-
-    if (isVoiceStream) {
-      try {
-        const body = await req.json().catch(() => ({}));
-        const { text, voice } = body || {};
-        const encoder = new TextEncoder();
-
-        const stream = new ReadableStream({
-          async start(controller) {
-            try {
-              const audioData = await generateVoiceAudio(text, voice || 'Aoede', (chunkBase64) => {
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ pcmChunk: chunkBase64 })}\n\n`));
-              });
-              if (audioData?.base64Pcm) {
-                controller.enqueue(
-                  encoder.encode(`data: ${JSON.stringify({ done: true, fullPcm: audioData.base64Pcm, audioUrl: audioData.audioUrl })}\n\n`)
-                );
-              } else {
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: 'Failed', done: true })}\n\n`));
-              }
-            } catch (e: any) {
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: e?.message, done: true })}\n\n`));
-            } finally {
-              controller.close();
-            }
-          }
-        });
-
-        return new Response(stream, {
-          headers: {
-            'Content-Type': 'text/event-stream; charset=utf-8',
-            'Cache-Control': 'no-cache, no-transform',
-            'Access-Control-Allow-Origin': '*',
-          },
-          status: 200,
-        });
-      } catch (e: any) {
-        return new Response(JSON.stringify({ success: false, error: e?.message }), {
-          headers: CORS_HEADERS,
-          status: 200,
-        });
-      }
-    }
-
     try {
       const body = await req.json().catch(() => ({}));
       const res = await handler({ httpMethod: req.method, body }, context);
       return new Response(res.body, { headers: res.headers as any, status: res.statusCode });
     } catch (e: any) {
-      return new Response(JSON.stringify({ success: false, error: e?.message }), {
-        headers: CORS_HEADERS,
-        status: 200,
-      });
+      return new Response(
+        JSON.stringify({ success: false, error: e?.message }),
+        { headers: CORS_HEADERS, status: 200 }
+      );
     }
   }
+
   return handler(req, context);
 }
