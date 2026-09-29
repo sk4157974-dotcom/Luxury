@@ -4,6 +4,7 @@ import { motion } from 'motion/react';
 import { MenuItem } from '../types';
 import { useCart } from '../context/CartContext';
 import { RESTAURANT_CONFIG } from '../config/restaurant';
+import { ASSET_IMAGES } from '../assets/images';
 
 export const ChefRecommendations: React.FC = () => {
   const [recentlyAddedId, setRecentlyAddedId] = useState<string | null>(null);
@@ -75,7 +76,7 @@ export const ChefRecommendations: React.FC = () => {
       description: 'Pasta is a type of food typically made from an unleavened dough.',
       rating: 5,
       reviewsCount: 142,
-      image: '/src/assets/images/popular_pasta_1789191067562.jpg',
+      image: ASSET_IMAGES.popularPasta,
       buttonStyle: 'outline'
     },
     {
@@ -86,7 +87,7 @@ export const ChefRecommendations: React.FC = () => {
       description: 'Pasta is a type of food typically made from an unleavened dough.',
       rating: 4,
       reviewsCount: 98,
-      image: '/src/assets/images/popular_fries_1789191080889.jpg',
+      image: ASSET_IMAGES.popularFries,
       buttonStyle: 'outline'
     },
     {
@@ -97,7 +98,7 @@ export const ChefRecommendations: React.FC = () => {
       description: 'Pasta is a type of food typically made from an unleavened dough.',
       rating: 3,
       reviewsCount: 84,
-      image: '/src/assets/images/popular_shawarma_1789191094574.jpg',
+      image: ASSET_IMAGES.popularShawarma,
       buttonStyle: 'filled'
     },
     {
@@ -108,7 +109,7 @@ export const ChefRecommendations: React.FC = () => {
       description: 'Pasta is a type of food typically made from an unleavened dough.',
       rating: 5,
       reviewsCount: 165,
-      image: '/src/assets/images/popular_fish_curry_1789191110264.jpg',
+      image: ASSET_IMAGES.popularFishCurry,
       buttonStyle: 'outline'
     },
     {
@@ -119,7 +120,7 @@ export const ChefRecommendations: React.FC = () => {
       description: 'Pan-roasted Atlantic salmon fillet with lemon citrus reduction and garden herbs.',
       rating: 5,
       reviewsCount: 195,
-      image: '/src/assets/images/flavoria_salmon_dish_1789106035046.jpg',
+      image: ASSET_IMAGES.flavoriaSalmonDish,
       buttonStyle: 'filled'
     },
     {
@@ -141,7 +142,7 @@ export const ChefRecommendations: React.FC = () => {
       description: 'Flame-seared tenderloin medallion with rosemary jus and grilled asparagus.',
       rating: 5,
       reviewsCount: 172,
-      image: '/src/assets/images/hero_steak_plate_1789191695883.jpg',
+      image: ASSET_IMAGES.heroSteakPlate,
       buttonStyle: 'filled'
     },
     {
@@ -152,7 +153,7 @@ export const ChefRecommendations: React.FC = () => {
       description: 'Handmade ribbon pasta tossed with succulent garlic butter tiger prawns and parmesan.',
       rating: 5,
       reviewsCount: 136,
-      image: '/src/assets/images/flavoria_pasta_plate_1789106011546.jpg',
+      image: ASSET_IMAGES.flavoriaPastaPlate,
       buttonStyle: 'outline'
     }
   ];

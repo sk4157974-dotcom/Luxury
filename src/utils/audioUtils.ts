@@ -48,13 +48,6 @@ export function unlockAudio(): void {
         source.start(0);
       } catch (_) {}
     }
-    if (typeof window !== 'undefined' && window.speechSynthesis) {
-      try {
-        if (window.speechSynthesis.paused) {
-          window.speechSynthesis.resume();
-        }
-      } catch (_) {}
-    }
   } catch (_) {}
 }
 
@@ -69,11 +62,6 @@ export function stopAllAudio(): void {
     } catch (_) {}
     currentStreamPlayer = null;
   }
-  try {
-    if (typeof window !== 'undefined' && window.speechSynthesis) {
-      window.speechSynthesis.cancel();
-    }
-  } catch (_) {}
   try {
     if (currentSource) {
       try {

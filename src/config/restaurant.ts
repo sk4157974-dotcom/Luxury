@@ -1,4 +1,5 @@
 import { RestaurantConfig, MenuItem, MenuCategoryType } from '../types';
+import { ASSET_IMAGES } from '../assets/images';
 
 export const RESTAURANT_CONFIG: RestaurantConfig = {
   name: 'Luxury Hotel',
@@ -98,21 +99,21 @@ export const RESTAURANT_CONFIG: RestaurantConfig = {
       id: 'Snacks',
       name: 'Crispy Snacks',
       description: 'Golden fries, gourmet finger foods, and artisanal dipping sauces',
-      image: '/src/assets/images/popular_fries_1789191080889.jpg',
+      image: ASSET_IMAGES.popularFries,
       itemCount: 5
     },
     {
       id: 'Platters',
       name: 'Platters & Grills',
       description: 'Prime cut flame-seared steaks, sharing boards, and skewers',
-      image: '/src/assets/images/hero_steak_plate_1789191695883.jpg',
+      image: ASSET_IMAGES.heroSteakPlate,
       itemCount: 6
     },
     {
       id: 'Salads',
       name: 'Fresh Salads',
       description: 'Organic garden-picked crisp greens, burrata, and citrus reductions',
-      image: '/src/assets/images/hero_salmon_salad_1789191050823.jpg',
+      image: ASSET_IMAGES.heroSalmonSalad,
       itemCount: 4
     }
   ],
@@ -127,7 +128,7 @@ export const RESTAURANT_CONFIG: RestaurantConfig = {
       dishPrice: 26.99,
       dishRating: 4.9,
       reviewsCount: 195,
-      image: '/src/assets/images/flavoria_salmon_dish_1789106035046.jpg',
+      image: ASSET_IMAGES.flavoriaSalmonDish,
       badge: 'Bestseller'
     },
     {
@@ -139,7 +140,7 @@ export const RESTAURANT_CONFIG: RestaurantConfig = {
       dishPrice: 24.99,
       dishRating: 4.9,
       reviewsCount: 184,
-      image: '/src/assets/images/flavoria_hero_dish_1789105995743.jpg',
+      image: ASSET_IMAGES.flavoriaHeroDish,
       badge: "Chef's Signature"
     },
     {
@@ -151,7 +152,7 @@ export const RESTAURANT_CONFIG: RestaurantConfig = {
       dishPrice: 21.99,
       dishRating: 4.8,
       reviewsCount: 162,
-      image: '/src/assets/images/flavoria_pasta_plate_1789106011546.jpg',
+      image: ASSET_IMAGES.flavoriaPastaPlate,
       badge: 'Popular'
     }
   ],
@@ -166,7 +167,7 @@ export const RESTAURANT_CONFIG: RestaurantConfig = {
       description: 'Handcrafted artisan pasta made from unleavened durum dough, tossed in rich herb sauce.',
       rating: 5,
       reviewsCount: 142,
-      image: '/src/assets/images/popular_pasta_1789191067562.jpg',
+      image: ASSET_IMAGES.popularPasta,
       isVegetarian: true,
       isChefRecommendation: true,
       badge: 'Popular',
@@ -182,7 +183,7 @@ export const RESTAURANT_CONFIG: RestaurantConfig = {
       description: 'Golden crispy potato batons seasoned with sea salt and served with house smoked aioli.',
       rating: 5,
       reviewsCount: 98,
-      image: '/src/assets/images/popular_fries_1789191080889.jpg',
+      image: ASSET_IMAGES.popularFries,
       isVegetarian: true,
       isChefRecommendation: true,
       badge: 'Crunchy',
@@ -198,7 +199,7 @@ export const RESTAURANT_CONFIG: RestaurantConfig = {
       description: 'Slow-roasted spiced chicken wrapped in warm flatbread with pickled vegetables and tahini garlic sauce.',
       rating: 5,
       reviewsCount: 124,
-      image: '/src/assets/images/popular_shawarma_1789191094574.jpg',
+      image: ASSET_IMAGES.popularShawarma,
       isVegetarian: false,
       isChefRecommendation: true,
       badge: 'Bestseller',
@@ -214,7 +215,7 @@ export const RESTAURANT_CONFIG: RestaurantConfig = {
       description: 'Coastal fresh catch simmered in fragrant coconut milk, curry leaves, and toasted whole spices.',
       rating: 5,
       reviewsCount: 165,
-      image: '/src/assets/images/popular_fish_curry_1789191110264.jpg',
+      image: ASSET_IMAGES.popularFishCurry,
       isVegetarian: false,
       isChefRecommendation: true,
       badge: 'Chef Special',
@@ -230,7 +231,7 @@ export const RESTAURANT_CONFIG: RestaurantConfig = {
       description: 'Flame-seared tenderloin medallion with rosemary jus, herb butter, and roasted asparagus.',
       rating: 5,
       reviewsCount: 172,
-      image: '/src/assets/images/hero_steak_plate_1789191695883.jpg',
+      image: ASSET_IMAGES.heroSteakPlate,
       isVegetarian: false,
       isChefRecommendation: true,
       badge: 'Prime',

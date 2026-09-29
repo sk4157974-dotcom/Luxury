@@ -626,7 +626,7 @@ export const AssistantModal: React.FC<AssistantModalProps> = ({ isOpen, onClose 
 
     const controller = new AbortController();
     ttsAbortControllerRef.current = controller;
-    const timeoutId = setTimeout(() => controller.abort(), 25000);
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
 
     try {
       const result = await safeFetchJson<{
@@ -638,7 +638,7 @@ export const AssistantModal: React.FC<AssistantModalProps> = ({ isOpen, onClose 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
-        timeoutMs: 25000,
+        timeoutMs: 12000,
         body: JSON.stringify({ text: cleanSpokenText, voice: 'Aoede' }),
       });
 
@@ -1391,6 +1391,8 @@ export const AssistantModal: React.FC<AssistantModalProps> = ({ isOpen, onClose 
                             ? 'bg-[#E5A645] text-white font-bold animate-pulse'
                             : audioLoadingId === msg.id
                             ? 'bg-[#FAF7F2] text-[#8C5D19] cursor-wait'
+                            : msg.audioError
+                            ? 'bg-amber-100/80 text-amber-900 border border-amber-300 hover:bg-amber-200/80'
                             : 'text-[#8C5D19] hover:bg-[#FAF7F2]'
                         }`}
                         title={
@@ -1398,6 +1400,8 @@ export const AssistantModal: React.FC<AssistantModalProps> = ({ isOpen, onClose 
                             ? 'Stop speaking'
                             : audioLoadingId === msg.id
                             ? 'Generating studio audio...'
+                            : msg.audioError
+                            ? 'Voice busy - tap to retry'
                             : 'Listen to this reply'
                         }
                       >
@@ -1410,6 +1414,11 @@ export const AssistantModal: React.FC<AssistantModalProps> = ({ isOpen, onClose 
                           <>
                             <Loader2 className="w-2.5 h-2.5 animate-spin" />
                             <span>Loading Voice...</span>
+                          </>
+                        ) : msg.audioError ? (
+                          <>
+                            <Volume2 className="w-2.5 h-2.5 text-amber-700" />
+                            <span className="font-semibold text-amber-800">Retry Voice</span>
                           </>
                         ) : (
                           <>

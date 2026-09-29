@@ -4,6 +4,7 @@ import { useCart } from '../context/CartContext';
 import { RESTAURANT_CONFIG } from '../config/restaurant';
 import { MenuItem } from '../types';
 import { SteamEffect } from './SteamEffect';
+import { ASSET_IMAGES } from '../assets/images';
 
 interface HeroProps {
   onOpenAssistant?: () => void;
@@ -44,25 +45,25 @@ export const Hero: React.FC<HeroProps> = ({ onOpenAssistant, onSelectCategory })
     {
       id: 'salmon-salad',
       name: 'Crispy Salmon Salad',
-      image: '/src/assets/images/hero_salmon_salad_1789191050823.jpg',
+      image: ASSET_IMAGES.heroSalmonSalad,
       category: 'Dishes'
     },
     {
       id: 'filet-mignon',
       name: 'Grilled Steak & Potatoes',
-      image: '/src/assets/images/hero_steak_plate_1789191695883.jpg',
+      image: ASSET_IMAGES.heroSteakPlate,
       category: 'Platter'
     },
     {
       id: 'sushi-platter',
       name: 'Artisan Sushi & Nigiri Platter',
-      image: '/src/assets/images/hero_sushi_plate_1789191708721.jpg',
+      image: ASSET_IMAGES.heroSushiPlate,
       category: 'Platter'
     },
     {
       id: 'truffle-pasta',
       name: 'Handcrafted Truffle Pasta',
-      image: '/src/assets/images/flavoria_pasta_plate_1789106011546.jpg',
+      image: ASSET_IMAGES.flavoriaPastaPlate,
       category: 'Dishes'
     }
   ];

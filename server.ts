@@ -3,7 +3,6 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
-import WebSocket from 'ws';
 import { RESTAURANT_CONFIG } from './src/config/restaurant';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -212,25 +211,14 @@ COMPREHENSIVE RESTAURANT KNOWLEDGE BASE:
           });
         }
 
-        // If not yet in cache, generate audio or wait up to 1500ms so reply & voice arrive together
+        // Pre-warm audio in background without delaying the chat response
         if (apiKey) {
           try {
             const ai = new GoogleGenAI({
               apiKey,
               httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
             });
-            const audioData = await Promise.race([
-              generateVoiceAudio(ai, cleanReply, 'Aoede'),
-              new Promise<null>((r) => setTimeout(() => r(null), 3000))
-            ]);
-            if (audioData) {
-              return res.json({
-                success: true,
-                reply: cleanReply,
-                base64Pcm: audioData.base64Pcm,
-                audioUrl: audioData.audioUrl,
-              });
-            }
+            generateVoiceAudio(ai, cleanReply, 'Aoede').catch(() => {});
           } catch (_) {}
         }
 
@@ -266,8 +254,8 @@ COMPREHENSIVE RESTAURANT KNOWLEDGE BASE:
 
           let geminiReply: string | null = null;
 
-          // High-availability chat models: try ultra-fast gemini-3.1-flash-lite first, then gemini-3.8-flash
-          const chatModels = ['gemini-3.1-flash-lite', 'gemini-3.8-flash'];
+          // High-availability chat models: fast flash-lite models for prompt text response
+          const chatModels = ['gemini-3.1-flash-lite', 'gemini-3.5-flash-lite', 'gemini-3.5-flash'];
           for (const model of chatModels) {
             if (geminiReply) break;
             try {
@@ -309,16 +297,8 @@ COMPREHENSIVE RESTAURANT KNOWLEDGE BASE:
               base64Pcm = cached.base64Pcm;
               audioUrl = cached.audioUrl;
             } else {
-              try {
-                const audioData = await Promise.race([
-                  generateVoiceAudio(ai, cleanReply, 'Aoede'),
-                  new Promise<null>((r) => setTimeout(() => r(null), 3000))
-                ]);
-                if (audioData) {
-                  base64Pcm = audioData.base64Pcm;
-                  audioUrl = audioData.audioUrl;
-                }
-              } catch (_) {}
+              // Pre-warm audio in background: prompt text response is NEVER delayed!
+              generateVoiceAudio(ai, cleanReply, 'Aoede').catch(() => {});
             }
 
             return res.json({
@@ -351,14 +331,7 @@ COMPREHENSIVE RESTAURANT KNOWLEDGE BASE:
             apiKey,
             httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
           });
-          const audioData = await Promise.race([
-            generateVoiceAudio(ai, cleanReply, 'Aoede'),
-            new Promise<null>((r) => setTimeout(() => r(null), 3000))
-          ]);
-          if (audioData) {
-            base64Pcm = audioData.base64Pcm;
-            audioUrl = audioData.audioUrl;
-          }
+          generateVoiceAudio(ai, cleanReply, 'Aoede').catch(() => {});
         } catch (_) {}
       }
 
@@ -399,126 +372,8 @@ COMPREHENSIVE RESTAURANT KNOWLEDGE BASE:
     return Buffer.concat([wavHeader, pcmBuffer]);
   }
 
-  // Real-time bidirectional Gemini Live conversational voice generation
-  // Uses models/gemini-3.1-flash-live-preview with Aoede voice (The exact natural human voice from the reference app)
-  async function generateLivePcmViaWs(
-    apiKey: string,
-    spokenText: string,
-    voiceName: string = 'Aoede'
-  ): Promise<string | null> {
-    return new Promise((resolve) => {
-      try {
-        const url = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${apiKey}`;
-        const ws = new WebSocket(url);
-        const pcmBuffers: Buffer[] = [];
-        let completed = false;
-
-        const timer = setTimeout(() => {
-          if (!completed) {
-            completed = true;
-            try { ws.close(); } catch (_) {}
-            if (pcmBuffers.length > 0) {
-              const combined = Buffer.concat(pcmBuffers);
-              resolve(combined.toString('base64'));
-            } else {
-              resolve(null);
-            }
-          }
-        }, 12000);
-
-        ws.on('open', () => {
-          ws.send(JSON.stringify({
-            setup: {
-              model: 'models/gemini-3.1-flash-live-preview',
-              generationConfig: {
-                responseModalities: ['AUDIO'],
-                speechConfig: {
-                  voiceConfig: {
-                    prebuiltVoiceConfig: { voiceName: voiceName || 'Aoede' }
-                  }
-                }
-              },
-              systemInstruction: {
-                parts: [{ text: 'You are the voice of Luxury Hotel official AI Concierge. Speak clearly, warmly, and naturally with respectful Indian hospitality voice. Read aloud the exact provided text in Hindi and English. Do not add commentary.' }]
-              }
-            }
-          }));
-        });
-
-        ws.on('message', (raw) => {
-          try {
-            const msg = JSON.parse(raw.toString());
-            if (msg.setupComplete) {
-              ws.send(JSON.stringify({
-                clientContent: {
-                  turns: [{
-                    role: 'user',
-                    parts: [{ text: 'Read aloud: ' + spokenText }]
-                  }],
-                  turnComplete: true
-                }
-              }));
-            }
-            if (msg.serverContent?.modelTurn?.parts) {
-              for (const part of msg.serverContent.modelTurn.parts) {
-                if (part.inlineData?.data) {
-                  try {
-                    const chunkBuf = Buffer.from(part.inlineData.data, 'base64');
-                    if (chunkBuf.length > 0) {
-                      pcmBuffers.push(chunkBuf);
-                    }
-                  } catch (_) {}
-                }
-              }
-            }
-            if (msg.serverContent?.turnComplete) {
-              if (!completed) {
-                completed = true;
-                clearTimeout(timer);
-                try { ws.close(); } catch (_) {}
-                if (pcmBuffers.length > 0) {
-                  const combined = Buffer.concat(pcmBuffers);
-                  resolve(combined.toString('base64'));
-                } else {
-                  resolve(null);
-                }
-              }
-            }
-          } catch (_) {}
-        });
-
-        ws.on('error', () => {
-          if (!completed) {
-            completed = true;
-            clearTimeout(timer);
-            if (pcmBuffers.length > 0) {
-              const combined = Buffer.concat(pcmBuffers);
-              resolve(combined.toString('base64'));
-            } else {
-              resolve(null);
-            }
-          }
-        });
-
-        ws.on('close', () => {
-          if (!completed) {
-            completed = true;
-            clearTimeout(timer);
-            if (pcmBuffers.length > 0) {
-              const combined = Buffer.concat(pcmBuffers);
-              resolve(combined.toString('base64'));
-            } else {
-              resolve(null);
-            }
-          }
-        });
-      } catch (_) {
-        resolve(null);
-      }
-    });
-  }
-
-  // Generates natural voice audio using Gemini Live Audio (Aoede voice, cached for instant replay)
+  // Generates natural voice audio using Gemini TTS (Aoede voice, cached for instant replay)
+  // Self-contained implementation using the configured GEMINI_API_KEY
   async function generateVoiceAudio(
     ai: GoogleGenAI,
     text: string,
@@ -548,14 +403,11 @@ COMPREHENSIVE RESTAURANT KNOWLEDGE BASE:
         .trim();
 
       // Ensure Indian English phonetic cadence:
-      // Starting with "Hello ji, " anchors the Aoede voice in the authentic Indian cadence
-      // rather than shifting to American phonetics when speaking English text.
       if (/^(?:hello|hi|welcome)\b/i.test(clean) && !/^(?:hello\s+ji|namaste\s+ji)/i.test(clean)) {
         clean = clean.replace(/^(?:hello|hi|welcome)\b[,\s!]*/i, 'Hello ji, ');
       }
 
-      // Full complete spoken response: synthesize the entire reply (up to 2200 characters)
-      // Never cut off after 1-2 lines. The voice speaks the full complete 5-6 line message from start to finish!
+      // Full complete spoken response (up to 2200 characters)
       let speechSlice = clean;
       if (clean.length > 2200) {
         const sub = clean.slice(0, 2200);
@@ -589,84 +441,51 @@ COMPREHENSIVE RESTAURANT KNOWLEDGE BASE:
 
       const generatePromise = (async () => {
         let base64Pcm: string | null = null;
-        const apiKey = process.env.GEMINI_API_KEY;
 
-        // Method 1: Live Bidirectional Gemini Live API (models/gemini-3.1-flash-live-preview)
-        // This is the EXACT voice model from the reference screen recording (natural, human, warm)
-        if (apiKey) {
+        // Dedicated official Gemini TTS models: fast, self-contained, exact Aoede voice
+        const ttsModels = ['gemini-3.8-flash-lite-tts', 'gemini-3.8-flash-tts'];
+        let allFailedRateLimit = true;
+
+        for (const model of ttsModels) {
+          if (base64Pcm) break;
           try {
-            const livePcm = await generateLivePcmViaWs(apiKey, speechSlice, voiceName || 'Aoede');
-            if (livePcm && livePcm.length > 1000) {
-              base64Pcm = livePcm;
-            }
-          } catch (wsErr: any) {
-            console.info('[Live Audio WS Notice]:', String(wsErr?.message || wsErr).slice(0, 100));
-          }
-        }
-
-        // Method 2: Resilient proxy to the reference live audio service if WebSocket was interrupted
-        if (!base64Pcm) {
-          try {
-            const liveServiceRes = await fetch('https://gangadental.netlify.app/api/voice', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ text: speechSlice }),
-              signal: AbortSignal.timeout(8000),
-            });
-            if (liveServiceRes.ok) {
-              const liveJson = (await liveServiceRes.json()) as any;
-              if (liveJson?.pcm && liveJson.pcm.length > 1000) {
-                base64Pcm = liveJson.pcm;
-              }
-            }
-          } catch (_) {}
-        }
-
-        // Method 3: Standard Gemini TTS fallback
-        if (!base64Pcm) {
-          const ttsModels = ['gemini-3.8-flash-tts', 'gemini-3.8-flash-lite-tts'];
-          let allFailedRateLimit = true;
-
-          for (const model of ttsModels) {
-            if (base64Pcm) break;
-            try {
-              const ttsPromise = ai.models.generateContent({
-                model,
-                contents: speechSlice,
-                config: {
-                  responseModalities: ['AUDIO'],
-                  speechConfig: {
-                    voiceConfig: {
-                      prebuiltVoiceConfig: { voiceName: voiceName || 'Aoede' },
-                    },
+            const ttsPromise = ai.models.generateContent({
+              model,
+              contents: speechSlice,
+              config: {
+                responseModalities: ['AUDIO'],
+                speechConfig: {
+                  voiceConfig: {
+                    prebuiltVoiceConfig: { voiceName: voiceName || 'Aoede' },
                   },
                 },
-              });
+              },
+            });
 
-              const ttsTimeoutPromise = new Promise<null>((resolve) =>
-                setTimeout(() => resolve(null), 25000)
-              );
+            // Fast 10-second timeout avoids Netlify function timeouts
+            const ttsTimeoutPromise = new Promise<null>((resolve) =>
+              setTimeout(() => resolve(null), 10000)
+            );
 
-              const response = await Promise.race([ttsPromise, ttsTimeoutPromise]);
-              const candidateParts = (response as any)?.candidates?.[0]?.content?.parts || [];
-              for (const part of candidateParts) {
-                if (part?.inlineData?.data) {
-                  base64Pcm = part.inlineData.data;
-                  allFailedRateLimit = false;
-                  break;
-                }
-              }
-            } catch (mErr: any) {
-              const rawErr = String(mErr?.message || mErr || '');
-              if (!rawErr.includes('429') && !rawErr.includes('RESOURCE_EXHAUSTED')) {
+            const response = await Promise.race([ttsPromise, ttsTimeoutPromise]);
+            const candidateParts = (response as any)?.candidates?.[0]?.content?.parts || [];
+            for (const part of candidateParts) {
+              if (part?.inlineData?.data) {
+                base64Pcm = part.inlineData.data;
                 allFailedRateLimit = false;
+                break;
               }
             }
+          } catch (mErr: any) {
+            const rawErr = String(mErr?.message || mErr || '');
+            if (!rawErr.includes('429') && !rawErr.includes('RESOURCE_EXHAUSTED')) {
+              allFailedRateLimit = false;
+            }
           }
+        }
 
-          if (!base64Pcm && allFailedRateLimit) {
-            ttsRateLimitCooldownUntil = Date.now() + 15000;
-          }
+        if (!base64Pcm && allFailedRateLimit) {
+          ttsRateLimitCooldownUntil = Date.now() + 10000;
         }
 
         if (!base64Pcm) {
@@ -771,7 +590,6 @@ COMPREHENSIVE RESTAURANT KNOWLEDGE BASE:
   });
 
   // Real-Time Streaming Audio Endpoint via Server-Sent Events (SSE)
-  // Streams 24kHz Gemini Live audio chunks as they arrive from WebSocket (~700ms first chunk)
   app.post(['/api/voice-stream', '/api/assistant/voice-stream'], async (req, res) => {
     res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
@@ -789,124 +607,27 @@ COMPREHENSIVE RESTAURANT KNOWLEDGE BASE:
       }
 
       const voiceName = voice || 'Aoede';
-      const clean = text
-        .replace(/\bNamaste\s*ji\s*ji\b/gi, 'Hello ji, ')
-        .replace(/\bNamaste\s*ji\b/gi, 'Hello ji, ')
-        .replace(/\bNamaste\b/gi, 'Hello, ')
-        .replace(/\bji\s+ji\b/gi, 'ji')
-        .replace(/\bHello\s+Hello\b/gi, 'Hello')
-        .replace(/(?:₹|Rs\.?|INR|\$)\s*(\d+)/gi, ' $1 rupaye, ')
-        .replace(/\b(\d+)\s*(?:rupees|rupee|rs\.?|\/-)\b/gi, ' $1 rupaye, ')
-        .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{1F900}-\u{1F9FF}\u{1FA70}-\u{1FAFF}]/gu, ' ')
-        .replace(/[*#_~`•–\[\]\(\)]/g, ' ')
-        .replace(/^-\s+/gm, '')
-        .replace(/:\s*/g, ', ')
-        .replace(/https?:\/\/\S+/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-
-      const cacheKey = `${voiceName}:${clean.toLowerCase()}`;
-      const cached = ttsAudioCache.get(cacheKey);
-      if (cached && cached.base64Pcm) {
-        res.write(`data: ${JSON.stringify({ pcmChunk: cached.base64Pcm, done: true })}\n\n`);
-        return res.end();
-      }
-
       const apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey) {
         res.write(`data: ${JSON.stringify({ error: 'GEMINI_API_KEY not configured' })}\n\n`);
         return res.end();
       }
 
-      const url = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${apiKey}`;
-      const ws = new WebSocket(url);
-      const pcmBuffers: Buffer[] = [];
-      let isClosed = false;
-
-      const finishStream = () => {
-        if (!isClosed) {
-          isClosed = true;
-          try { ws.close(); } catch (_) {}
-          if (pcmBuffers.length > 0) {
-            const combined = Buffer.concat(pcmBuffers);
-            const base64Pcm = combined.toString('base64');
-            const wavBuffer = pcmToWavBuffer(combined, 24000, 1, 16);
-            const audioUrl = `data:audio/wav;base64,${wavBuffer.toString('base64')}`;
-            ttsAudioCache.set(cacheKey, { base64Pcm, audioUrl });
-          }
-          try {
-            res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
-            res.end();
-          } catch (_) {}
-        }
-      };
-
-      req.on('close', () => {
-        isClosed = true;
-        try { ws.close(); } catch (_) {}
+      const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
       });
 
-      const timer = setTimeout(finishStream, 14000);
-
-      ws.on('open', () => {
-        if (isClosed) return;
-        ws.send(JSON.stringify({
-          setup: {
-            model: 'models/gemini-3.1-flash-live-preview',
-            generationConfig: {
-              responseModalities: ['AUDIO'],
-              speechConfig: {
-                voiceConfig: {
-                  prebuiltVoiceConfig: { voiceName }
-                }
-              }
-            },
-            systemInstruction: {
-              parts: [{ text: 'You are the voice of Luxury Hotel official AI Concierge. Speak clearly, warmly, and naturally with respectful Indian hospitality voice. Read aloud the exact provided text in Hindi and English. Do not add commentary.' }]
-            }
-          }
-        }));
-      });
-
-      ws.on('message', (raw) => {
-        if (isClosed) return;
-        try {
-          const msg = JSON.parse(raw.toString());
-          if (msg.setupComplete) {
-            ws.send(JSON.stringify({
-              clientContent: {
-                turns: [{
-                  role: 'user',
-                  parts: [{ text: 'Read aloud: ' + clean }]
-                }],
-                turnComplete: true
-              }
-            }));
-          }
-          if (msg.serverContent?.modelTurn?.parts) {
-            for (const part of msg.serverContent.modelTurn.parts) {
-              if (part.inlineData?.data) {
-                try {
-                  const chunkBuf = Buffer.from(part.inlineData.data, 'base64');
-                  if (chunkBuf.length > 0) {
-                    pcmBuffers.push(chunkBuf);
-                    res.write(`data: ${JSON.stringify({ pcmChunk: part.inlineData.data })}\n\n`);
-                  }
-                } catch (_) {}
-              }
-            }
-          }
-          if (msg.serverContent?.turnComplete) {
-            clearTimeout(timer);
-            finishStream();
-          }
-        } catch (_) {}
-      });
-
-      ws.on('error', finishStream);
-      ws.on('close', finishStream);
-    } catch {
-      try { res.end(); } catch (_) {}
+      const audioData = await generateVoiceAudio(ai, text, voiceName);
+      if (audioData?.base64Pcm) {
+        res.write(`data: ${JSON.stringify({ pcmChunk: audioData.base64Pcm, audioUrl: audioData.audioUrl, done: true })}\n\n`);
+      } else {
+        res.write(`data: ${JSON.stringify({ error: 'Audio generation failed', done: true })}\n\n`);
+      }
+      res.end();
+    } catch (err: any) {
+      res.write(`data: ${JSON.stringify({ error: err.message || 'Stream error', done: true })}\n\n`);
+      res.end();
     }
   });
 
