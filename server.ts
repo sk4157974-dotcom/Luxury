@@ -377,20 +377,24 @@ COMPREHENSIVE RESTAURANT KNOWLEDGE BASE:
       }
 
       const voiceName = voice || 'Aoede';
-      const apiKey = process.env.GEMINI_API_KEY;
+      const apiKey = getGeminiApiKey();
       if (!apiKey) {
         res.write(`data: ${JSON.stringify({ error: 'GEMINI_API_KEY not configured' })}\n\n`);
         return res.end();
       }
 
-      const ai = new GoogleGenAI({
-        apiKey,
-        httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
+      // Stream each PCM chunk in real time (<700ms TTFB) directly to the browser
+      const audioData = await generateVoiceAudio(text, voiceName, (chunkBase64) => {
+        try {
+          res.write(`data: ${JSON.stringify({ pcmChunk: chunkBase64 })}\n\n`);
+          if (typeof (res as any).flush === 'function') {
+            (res as any).flush();
+          }
+        } catch (_) {}
       });
 
-      const audioData = await generateVoiceAudio(text, voiceName);
       if (audioData?.base64Pcm) {
-        res.write(`data: ${JSON.stringify({ pcmChunk: audioData.base64Pcm, audioUrl: audioData.audioUrl, done: true })}\n\n`);
+        res.write(`data: ${JSON.stringify({ done: true, fullPcm: audioData.base64Pcm, audioUrl: audioData.audioUrl })}\n\n`);
       } else {
         res.write(`data: ${JSON.stringify({ error: 'Audio generation failed', done: true })}\n\n`);
       }

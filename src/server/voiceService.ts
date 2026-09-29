@@ -31,6 +31,7 @@ export function getGeminiApiKey(): string {
  * - Indian currency pronunciation ("35 rupaye")
  * - Soft comma pauses for gentle, unhurried 5-star Indian hospitality rhythm
  * - Strip markdown, asterisks, brackets, and emojis completely
+ * - Does NOT truncate text so long responses are spoken completely!
  */
 export function cleanSpeechText(text: string): string {
   if (!text) return '';
@@ -55,19 +56,6 @@ export function cleanSpeechText(text: string): string {
     clean = clean.replace(/^(?:hello|hi|welcome)\b[,\s!]*/i, 'Hello ji, ');
   }
 
-  // Full complete spoken response (up to 2200 characters)
-  if (clean.length > 2200) {
-    const sub = clean.slice(0, 2200);
-    const lastPunct = Math.max(
-      sub.lastIndexOf('.'),
-      sub.lastIndexOf('!'),
-      sub.lastIndexOf('?')
-    );
-    if (lastPunct > 1600) {
-      return sub.slice(0, lastPunct + 1).trim();
-    }
-    return sub.trim();
-  }
   return clean;
 }
 
@@ -95,33 +83,53 @@ export function pcmToWavBuffer(pcmBuffer: Buffer, sampleRate = 24000, numChannel
 }
 
 /**
- * Real-time bidirectional Gemini Live conversational voice generation
+ * Real-time bidirectional Gemini Live conversational voice generation with streaming chunk support.
  * Uses models/gemini-3.1-flash-live-preview with Aoede voice (The exact natural human voice)
+ * Streams chunks immediately (<700ms TTFB) and completes all chunks without premature cutoff.
  */
-export async function generateLivePcmViaWs(
+export async function streamLivePcmViaWs(
   apiKey: string,
   spokenText: string,
-  voiceName: string = 'Aoede'
-): Promise<string | null> {
+  voiceName: string = 'Aoede',
+  onChunk?: (chunkBase64: string) => void
+): Promise<AudioResult | null> {
   return new Promise((resolve) => {
     try {
       const url = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${apiKey}`;
       const ws = new WebSocket(url);
       const pcmBuffers: Buffer[] = [];
       let completed = false;
+      let idleTimer: NodeJS.Timeout | null = null;
 
-      const timer = setTimeout(() => {
+      const finish = () => {
         if (!completed) {
           completed = true;
+          if (idleTimer) clearTimeout(idleTimer);
+          if (maxTimer) clearTimeout(maxTimer);
           try { ws.close(); } catch (_) {}
           if (pcmBuffers.length > 0) {
             const combined = Buffer.concat(pcmBuffers);
-            resolve(combined.toString('base64'));
+            const base64Pcm = combined.toString('base64');
+            const wavBuffer = pcmToWavBuffer(combined, 24000, 1, 16);
+            const audioUrl = `data:audio/wav;base64,${wavBuffer.toString('base64')}`;
+            resolve({ base64Pcm, audioUrl });
           } else {
             resolve(null);
           }
         }
-      }, 8500);
+      };
+
+      const resetIdleTimer = () => {
+        if (idleTimer) clearTimeout(idleTimer);
+        idleTimer = setTimeout(() => {
+          finish();
+        }, 6000);
+      };
+
+      // 45-second overall safety limit for long responses (never prematurely truncates at 8.5s)
+      const maxTimer = setTimeout(() => {
+        finish();
+      }, 45000);
 
       ws.on('open', () => {
         ws.send(JSON.stringify({
@@ -155,6 +163,7 @@ export async function generateLivePcmViaWs(
                 turnComplete: true
               }
             }));
+            resetIdleTimer();
           }
           if (msg.serverContent?.modelTurn?.parts) {
             for (const part of msg.serverContent.modelTurn.parts) {
@@ -163,52 +172,27 @@ export async function generateLivePcmViaWs(
                   const chunkBuf = Buffer.from(part.inlineData.data, 'base64');
                   if (chunkBuf.length > 0) {
                     pcmBuffers.push(chunkBuf);
+                    if (onChunk) {
+                      onChunk(part.inlineData.data);
+                    }
+                    resetIdleTimer();
                   }
                 } catch (_) {}
               }
             }
           }
           if (msg.serverContent?.turnComplete) {
-            if (!completed) {
-              completed = true;
-              clearTimeout(timer);
-              try { ws.close(); } catch (_) {}
-              if (pcmBuffers.length > 0) {
-                const combined = Buffer.concat(pcmBuffers);
-                resolve(combined.toString('base64'));
-              } else {
-                resolve(null);
-              }
-            }
+            finish();
           }
         } catch (_) {}
       });
 
       ws.on('error', () => {
-        if (!completed) {
-          completed = true;
-          clearTimeout(timer);
-          try { ws.close(); } catch (_) {}
-          if (pcmBuffers.length > 0) {
-            const combined = Buffer.concat(pcmBuffers);
-            resolve(combined.toString('base64'));
-          } else {
-            resolve(null);
-          }
-        }
+        finish();
       });
 
       ws.on('close', () => {
-        if (!completed) {
-          completed = true;
-          clearTimeout(timer);
-          if (pcmBuffers.length > 0) {
-            const combined = Buffer.concat(pcmBuffers);
-            resolve(combined.toString('base64'));
-          } else {
-            resolve(null);
-          }
-        }
+        finish();
       });
     } catch (_) {
       resolve(null);
@@ -222,7 +206,8 @@ export async function generateLivePcmViaWs(
  */
 export async function generateVoiceAudio(
   text: string,
-  voiceName: string = 'Aoede'
+  voiceName: string = 'Aoede',
+  onChunk?: (chunkBase64: string) => void
 ): Promise<AudioResult | null> {
   try {
     const speechSlice = cleanSpeechText(text);
@@ -230,7 +215,11 @@ export async function generateVoiceAudio(
 
     const cacheKey = `${voiceName}::${speechSlice}`;
     if (ttsAudioCache.has(cacheKey)) {
-      return ttsAudioCache.get(cacheKey)!;
+      const cached = ttsAudioCache.get(cacheKey)!;
+      if (onChunk && cached.base64Pcm) {
+        onChunk(cached.base64Pcm);
+      }
+      return cached;
     }
 
     // Reuse in-flight Promise if request is already ongoing
@@ -245,80 +234,78 @@ export async function generateVoiceAudio(
     }
 
     const generatePromise = (async (): Promise<AudioResult | null> => {
-      let base64Pcm: string | null = null;
-
       // Method 1: Live Bidirectional Gemini Live API (models/gemini-3.1-flash-live-preview)
       // Authentic human Aoede voice, warm Indian hospitality cadence, zero daily request quota limits
       try {
-        const livePcm = await generateLivePcmViaWs(apiKey, speechSlice, voiceName || 'Aoede');
-        if (livePcm && livePcm.length > 1000) {
-          base64Pcm = livePcm;
+        const liveResult = await streamLivePcmViaWs(apiKey, speechSlice, voiceName || 'Aoede', onChunk);
+        if (liveResult && liveResult.base64Pcm && liveResult.base64Pcm.length > 500) {
+          if (ttsAudioCache.size > 500) {
+            const firstKey = ttsAudioCache.keys().next().value;
+            if (firstKey) ttsAudioCache.delete(firstKey);
+          }
+          ttsAudioCache.set(cacheKey, liveResult);
+          return liveResult;
         }
       } catch (wsErr: any) {
         console.info('[Live Audio WS Notice]:', String(wsErr?.message || wsErr).slice(0, 100));
       }
 
       // Method 2: Gemini TTS fallback
-      if (!base64Pcm) {
-        try {
-          const ai = new GoogleGenAI({
-            apiKey,
-            httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
-          });
-          const ttsModels = ['gemini-3.8-flash-tts', 'gemini-3.8-flash-lite-tts'];
-          for (const model of ttsModels) {
-            if (base64Pcm) break;
-            try {
-              const ttsPromise = ai.models.generateContent({
-                model,
-                contents: speechSlice,
-                config: {
-                  responseModalities: ['AUDIO'],
-                  speechConfig: {
-                    voiceConfig: {
-                      prebuiltVoiceConfig: { voiceName: voiceName || 'Aoede' },
-                    },
+      try {
+        const ai = new GoogleGenAI({
+          apiKey,
+          httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
+        });
+        const ttsModels = ['gemini-3.8-flash-tts', 'gemini-3.8-flash-lite-tts'];
+        let base64Pcm: string | null = null;
+        for (const model of ttsModels) {
+          if (base64Pcm) break;
+          try {
+            const ttsPromise = ai.models.generateContent({
+              model,
+              contents: speechSlice,
+              config: {
+                responseModalities: ['AUDIO'],
+                speechConfig: {
+                  voiceConfig: {
+                    prebuiltVoiceConfig: { voiceName: voiceName || 'Aoede' },
                   },
                 },
-              });
+              },
+            });
 
-              const ttsTimeoutPromise = new Promise<null>((resolve) =>
-                setTimeout(() => resolve(null), 8000)
-              );
+            const ttsTimeoutPromise = new Promise<null>((resolve) =>
+              setTimeout(() => resolve(null), 15000)
+            );
 
-              const response = await Promise.race([ttsPromise, ttsTimeoutPromise]);
-              const candidateParts = (response as any)?.candidates?.[0]?.content?.parts || [];
-              for (const part of candidateParts) {
-                if (part?.inlineData?.data) {
-                  base64Pcm = part.inlineData.data;
-                  break;
-                }
+            const response = await Promise.race([ttsPromise, ttsTimeoutPromise]);
+            const candidateParts = (response as any)?.candidates?.[0]?.content?.parts || [];
+            for (const part of candidateParts) {
+              if (part?.inlineData?.data) {
+                base64Pcm = part.inlineData.data;
+                break;
               }
-            } catch (_) {}
+            }
+          } catch (_) {}
+        }
+
+        if (base64Pcm) {
+          if (onChunk) onChunk(base64Pcm);
+          let audioUrl: string;
+          if (base64Pcm.startsWith('UklGR')) {
+            audioUrl = `data:audio/wav;base64,${base64Pcm}`;
+          } else {
+            const pcmBuffer = Buffer.from(base64Pcm, 'base64');
+            const wavBuffer = pcmToWavBuffer(pcmBuffer, 24000, 1, 16);
+            audioUrl = `data:audio/wav;base64,${wavBuffer.toString('base64')}`;
           }
-        } catch (_) {}
-      }
+          const audioData: AudioResult = { base64Pcm, audioUrl };
+          ttsAudioCache.set(cacheKey, audioData);
+          return audioData;
+        }
+      } catch (_) {}
 
-      if (!base64Pcm) {
-        return null;
-      }
-
-      let audioUrl: string;
-      if (base64Pcm.startsWith('UklGR')) {
-        audioUrl = `data:audio/wav;base64,${base64Pcm}`;
-      } else {
-        const pcmBuffer = Buffer.from(base64Pcm, 'base64');
-        const wavBuffer = pcmToWavBuffer(pcmBuffer, 24000, 1, 16);
-        audioUrl = `data:audio/wav;base64,${wavBuffer.toString('base64')}`;
-      }
-
-      const audioData: AudioResult = { base64Pcm, audioUrl };
-      if (ttsAudioCache.size > 500) {
-        const firstKey = ttsAudioCache.keys().next().value;
-        if (firstKey) ttsAudioCache.delete(firstKey);
-      }
-      ttsAudioCache.set(cacheKey, audioData);
-      return audioData;
+      return null;
     })();
 
     inFlightTts.set(cacheKey, generatePromise);

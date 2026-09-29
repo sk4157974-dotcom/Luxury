@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { X, Send, Sparkles, MessageCircle, Bot, User, Volume2, VolumeX, Mic, MicOff, Square, Zap, Loader2, AlertCircle, RefreshCw, Calendar, Clock, Phone, CheckCircle2 } from 'lucide-react';
 import { RESTAURANT_CONFIG, buildQuickWhatsAppUrl, buildReservationWhatsAppUrl } from '../config/restaurant';
-import { playPCM, stopAllAudio, unlockAudio } from '../utils/audioUtils';
+import { playPCM, stopAllAudio, unlockAudio, StreamAudioPlayer } from '../utils/audioUtils';
 
 interface Message {
   id: string;
@@ -118,17 +118,7 @@ const prepareSpeechText = (text: string): string => {
     cleaned = cleaned.replace(/^(?:hello|hi|welcome)\b[,\s!]*/i, 'Hello ji, ');
   }
 
-  // 5. Complete, natural length for rich spoken responses: up to 2200 characters so full 5-6 lines are spoken completely
-  if (cleaned.length > 2200) {
-    const sub = cleaned.slice(0, 2200);
-    const lastPunct = Math.max(sub.lastIndexOf('.'), sub.lastIndexOf('!'), sub.lastIndexOf('?'));
-    if (lastPunct > 1600) {
-      cleaned = sub.slice(0, lastPunct + 1).trim();
-    } else {
-      cleaned = sub.trim();
-    }
-  }
-
+  // Never truncate text so long answers (8+ lines) are spoken completely
   return cleaned;
 };
 
@@ -640,7 +630,79 @@ export const AssistantModal: React.FC<AssistantModalProps> = ({ isOpen, onClose 
 
     const controller = new AbortController();
     ttsAbortControllerRef.current = controller;
-    const timeoutId = setTimeout(() => controller.abort(), 12000);
+    const timeoutId = setTimeout(() => controller.abort(), 40000);
+
+    // Attempt 1: Real-time chunk streaming for immediate speech playback (<700ms TTFB)
+    try {
+      const streamRes = await fetch('/api/assistant/voice-stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
+        signal: controller.signal,
+        body: JSON.stringify({ text: cleanSpokenText, voice: 'Aoede' })
+      });
+
+      if (streamRes.ok && streamRes.body) {
+        const reader = streamRes.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let streamPlayer: StreamAudioPlayer | null = null;
+        const allChunks: string[] = [];
+        let hasPlayedChunks = false;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed.startsWith('data:')) {
+              try {
+                const payload = JSON.parse(trimmed.slice(5).trim());
+                if (payload.pcmChunk) {
+                  if (!streamPlayer) {
+                    setAudioLoadingId(null);
+                    setSpeakingMessageId(activeId);
+                    streamPlayer = new StreamAudioPlayer({
+                      onEnded: () => setSpeakingMessageId(null),
+                      onError: () => setSpeakingMessageId(null)
+                    });
+                  }
+                  streamPlayer.pushChunk(payload.pcmChunk);
+                  allChunks.push(payload.pcmChunk);
+                  hasPlayedChunks = true;
+                }
+                if (payload.done) {
+                  if (streamPlayer) {
+                    streamPlayer.finishStream();
+                  }
+                  if (messageId && (payload.fullPcm || allChunks.length > 0)) {
+                    const fullPcm = payload.fullPcm || allChunks.join('');
+                    setMessages((prev) =>
+                      prev.map((m) =>
+                        m.id === messageId
+                          ? { ...m, base64Pcm: fullPcm, audioUrl: payload.audioUrl || null, audioError: null }
+                          : m
+                      )
+                    );
+                  }
+                }
+              } catch (_) {}
+            }
+          }
+        }
+
+        if (hasPlayedChunks) {
+          clearTimeout(timeoutId);
+          setAudioLoadingId(null);
+          return;
+        }
+      }
+    } catch (streamErr) {
+      console.info('[Voice Stream notice, falling back to buffered TTS]:', streamErr);
+    }
 
     try {
       const result = await safeFetchJson<{
@@ -652,7 +714,7 @@ export const AssistantModal: React.FC<AssistantModalProps> = ({ isOpen, onClose 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
-        timeoutMs: 12000,
+        timeoutMs: 40000,
         body: JSON.stringify({ text: cleanSpokenText, voice: 'Aoede' }),
       });
 
