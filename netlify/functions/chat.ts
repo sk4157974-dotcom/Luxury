@@ -119,7 +119,7 @@ Answer concisely in 3-5 sentences with helpful emojis.
 Guest: ${message}
 Assistant:`;
 
-        const chatModels = ['gemini-3.1-flash-lite', 'gemini-3.5-flash-lite', 'gemini-3.5-flash'];
+        const chatModels = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.5-flash'];
         for (const model of chatModels) {
           if (replyText) break;
           try {
@@ -127,9 +127,15 @@ Assistant:`;
               ai.models.generateContent({
                 model,
                 contents: prompt,
-                config: { maxOutputTokens: 350, temperature: 0.25 }
+                config: {
+                  maxOutputTokens: 280,
+                  temperature: 0.25,
+                  thinkingConfig: {
+                    thinkingBudget: 0,
+                  },
+                },
               }),
-              new Promise<null>((r) => setTimeout(() => r(null), 3000))
+              new Promise<null>((r) => setTimeout(() => r(null), 3500))
             ]);
             if (resp && (resp as any).text && (resp as any).text.trim()) {
               replyText = (resp as any).text.trim();
