@@ -1,4 +1,5 @@
 import WebSocket from 'ws';
+import { PREWARMED_VOICE_CACHE } from '../../src/server/prewarmedVoiceCache';
 
 const CORS_HEADERS = {
   'Content-Type': 'application/json; charset=utf-8',
@@ -139,7 +140,7 @@ async function streamLivePcmViaWs(
           } else {
             finish(null);
           }
-        }, 2500);
+        }, 8000);
       };
 
       ws.on('open', () => {
@@ -256,6 +257,24 @@ async function generateVoiceAudio(
   if (!speechSlice) return null;
 
   const cacheKey = `${voiceName}::${speechSlice}`;
+
+  // Check static pre-warmed cache first for instant sub-millisecond response
+  const lower = speechSlice.toLowerCase();
+  for (const [intentId, pcm] of Object.entries(PREWARMED_VOICE_CACHE)) {
+    if (
+      (intentId === 'timings' && (lower.includes('timing') || lower.includes('lunch hours') || lower.includes('dinner hours'))) ||
+      (intentId === 'identity' && (lower.includes('kaun ho') || lower.includes('who are you') || lower.includes('parichay') || lower.includes('ai concierge assistant'))) ||
+      (intentId === 'rates' && (lower.includes('rate') || lower.includes('price') || lower.includes('kitne ka'))) ||
+      (intentId === 'booking' && (lower.includes('table reservation') || lower.includes('book a table'))) ||
+      (intentId === 'address' && (lower.includes('location') || lower.includes('fraser road') || lower.includes('address'))) ||
+      (intentId === 'menu' && (lower.includes('menu highlights') || lower.includes('signature dishes'))) ||
+      (intentId === 'welcome' && lower.includes('welcome to luxury hotel') && lower.length < 180)
+    ) {
+      if (onChunk && pcm) onChunk(pcm);
+      return { base64Pcm: pcm, audioUrl: '' };
+    }
+  }
+
   if (ttsAudioCache.has(cacheKey)) {
     const cached = ttsAudioCache.get(cacheKey)!;
     if (onChunk && cached.base64Pcm) {
