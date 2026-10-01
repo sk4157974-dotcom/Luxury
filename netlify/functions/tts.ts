@@ -3,7 +3,17 @@ import WebSocket from 'ws';
 const CORS_HEADERS = {
   'Content-Type': 'application/json; charset=utf-8',
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, Accept',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+};
+
+const STREAMING_HEADERS = {
+  'Content-Type': 'text/event-stream; charset=utf-8',
+  'Cache-Control': 'no-cache, no-transform',
+  'Connection': 'keep-alive',
+  'X-Accel-Buffering': 'no',
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, Accept',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
 };
 
@@ -69,13 +79,14 @@ function pcmToWavBuffer(pcmBuffer: Buffer, sampleRate = 24000, numChannels = 1, 
 /**
  * Real-time bidirectional Gemini Live conversational voice generation with streaming chunk support.
  * Uses models/gemini-3.1-flash-live-preview with Aoede voice (The exact natural human voice)
- * Accurately accumulates ALL chunks until turnComplete before finalizing the complete audio.
+ * Streams each chunk (<900ms TTFB) via onChunk callback while accumulating the complete audio buffer.
  */
 async function streamLivePcmViaWs(
   apiKey: string,
   spokenText: string,
   voiceName: string = 'Aoede',
-  timeoutMs: number = 22000
+  timeoutMs: number = 24000,
+  onChunk?: (chunkBase64: string) => void
 ): Promise<{ base64Pcm: string; audioUrl: string } | null> {
   return new Promise((resolve) => {
     let completed = false;
@@ -118,7 +129,6 @@ async function streamLivePcmViaWs(
 
       const resetIdleTimer = () => {
         if (idleTimer) clearTimeout(idleTimer);
-        // Only trigger finish if idle for 3.5s after receiving speech chunks
         idleTimer = setTimeout(() => {
           if (pcmBuffers.length > 0) {
             const combined = Buffer.concat(pcmBuffers);
@@ -129,7 +139,7 @@ async function streamLivePcmViaWs(
           } else {
             finish(null);
           }
-        }, 3500);
+        }, 2500);
       };
 
       ws.on('open', () => {
@@ -179,6 +189,9 @@ async function streamLivePcmViaWs(
                   const chunkBuf = Buffer.from(part.inlineData.data, 'base64');
                   if (chunkBuf.length > 0) {
                     pcmBuffers.push(chunkBuf);
+                    if (onChunk) {
+                      onChunk(part.inlineData.data);
+                    }
                     resetIdleTimer();
                   }
                 } catch (_) {}
@@ -236,14 +249,19 @@ async function streamLivePcmViaWs(
  */
 async function generateVoiceAudio(
   text: string,
-  voiceName: string = 'Aoede'
+  voiceName: string = 'Aoede',
+  onChunk?: (chunkBase64: string) => void
 ): Promise<{ base64Pcm: string; audioUrl: string } | null> {
   const speechSlice = cleanSpeechText(text);
   if (!speechSlice) return null;
 
   const cacheKey = `${voiceName}::${speechSlice}`;
   if (ttsAudioCache.has(cacheKey)) {
-    return ttsAudioCache.get(cacheKey)!;
+    const cached = ttsAudioCache.get(cacheKey)!;
+    if (onChunk && cached.base64Pcm) {
+      onChunk(cached.base64Pcm);
+    }
+    return cached;
   }
 
   if (inFlightTts.has(cacheKey)) {
@@ -256,8 +274,7 @@ async function generateVoiceAudio(
   }
 
   const generatePromise = (async () => {
-    // Generate complete audio via Live API with Aoede voice
-    const liveResult = await streamLivePcmViaWs(apiKey, speechSlice, voiceName || 'Aoede', 22000);
+    const liveResult = await streamLivePcmViaWs(apiKey, speechSlice, voiceName || 'Aoede', 24000, onChunk);
     if (liveResult && liveResult.base64Pcm && liveResult.base64Pcm.length > 500) {
       if (ttsAudioCache.size > 500) {
         const firstKey = ttsAudioCache.keys().next().value;
@@ -349,8 +366,8 @@ export const handler = async (event: any, context?: any) => {
       };
     }
 
-    // 24s safety timeout for Netlify function limit (26s)
-    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 24000));
+    // 25s safety timeout for Netlify function limit (26s)
+    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 25000));
     const audioData = await Promise.race([generateVoiceAudio(text, voice || 'Aoede'), timeoutPromise]);
 
     if (!audioData || !audioData.base64Pcm) {
@@ -391,7 +408,7 @@ export const handler = async (event: any, context?: any) => {
   }
 };
 
-// Default export supporting Fetch API / Netlify Functions v2 runtime
+// Default export supporting Fetch API / Netlify Functions v2 runtime with real-time SSE chunk streaming
 export default async function (req: any, context?: any) {
   if (context) {
     context.callbackWaitsForEmptyEventLoop = false;
@@ -401,6 +418,78 @@ export default async function (req: any, context?: any) {
     if (req.method === 'OPTIONS') {
       return new Response('', { headers: CORS_HEADERS, status: 200 });
     }
+
+    const acceptHeader = req.headers.get('Accept') || '';
+    const wantsStream = acceptHeader.includes('text/event-stream') || req.url?.includes('stream');
+
+    if (wantsStream && req.method === 'POST') {
+      try {
+        const body = await req.json().catch(() => ({}));
+        const { text, voice } = body || {};
+
+        if (!text || typeof text !== 'string' || !text.trim()) {
+          return new Response(JSON.stringify({ error: 'Text is required' }), {
+            headers: CORS_HEADERS,
+            status: 400,
+          });
+        }
+
+        const apiKey = getGeminiApiKey();
+        if (!apiKey) {
+          return new Response(JSON.stringify({ error: 'GEMINI_API_KEY is not configured' }), {
+            headers: CORS_HEADERS,
+            status: 200,
+          });
+        }
+
+        const encoder = new TextEncoder();
+        const stream = new ReadableStream({
+          async start(streamController) {
+            try {
+              const audioData = await generateVoiceAudio(text, voice || 'Aoede', (chunkBase64) => {
+                try {
+                  streamController.enqueue(
+                    encoder.encode(`data: ${JSON.stringify({ pcmChunk: chunkBase64 })}\n\n`)
+                  );
+                } catch (_) {}
+              });
+
+              if (audioData?.base64Pcm) {
+                streamController.enqueue(
+                  encoder.encode(
+                    `data: ${JSON.stringify({
+                      done: true,
+                      fullPcm: audioData.base64Pcm,
+                      audioUrl: audioData.audioUrl,
+                    })}\n\n`
+                  )
+                );
+              } else {
+                streamController.enqueue(
+                  encoder.encode(`data: ${JSON.stringify({ done: true, error: 'Voice audio generation busy' })}\n\n`)
+                );
+              }
+            } catch (err: any) {
+              streamController.enqueue(
+                encoder.encode(`data: ${JSON.stringify({ done: true, error: err?.message || 'Stream error' })}\n\n`)
+              );
+            } finally {
+              try {
+                streamController.close();
+              } catch (_) {}
+            }
+          },
+        });
+
+        return new Response(stream, { headers: STREAMING_HEADERS });
+      } catch (e: any) {
+        return new Response(JSON.stringify({ success: false, error: e?.message }), {
+          headers: CORS_HEADERS,
+          status: 200,
+        });
+      }
+    }
+
     try {
       const body = await req.json().catch(() => ({}));
       const res = await handler({ httpMethod: req.method, body }, context);

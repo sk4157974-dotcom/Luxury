@@ -661,69 +661,11 @@ export const AssistantModal: React.FC<AssistantModalProps> = ({ isOpen, onClose 
     ttsAbortControllerRef.current = controller;
     const timeoutId = setTimeout(() => controller.abort(), 40000);
 
-    // Fast-start pipeline for multi-sentence answers:
-    // Fetches opening segment for immediate speech (~2s) while streaming/pre-fetching remaining text in parallel.
-    const splitMatch = cleanSpokenText.length >= 120
-      ? cleanSpokenText.match(/^([\s\S]+?[.!?])(?:\s+([\s\S]+))?$/)
-      : null;
-
-    const hasTwoSegments = Boolean(
-      splitMatch &&
-      splitMatch[1] &&
-      splitMatch[2] &&
-      splitMatch[1].trim().length >= 20 &&
-      splitMatch[2].trim().length >= 10
-    );
-
-    if (hasTwoSegments) {
-      const seg1 = splitMatch![1].trim();
-      const seg2 = splitMatch![2].trim();
-
-      const fetchTts = async (textChunk: string) => {
-        try {
-          const r = await fetch('/api/assistant/tts', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            signal: controller.signal,
-            body: JSON.stringify({ text: textChunk, voice: 'Aoede' })
-          });
-          if (!r.ok) return null;
-          const d = await r.json();
-          return d?.success && (d.base64Pcm || d.audioUrl) ? d : null;
-        } catch {
-          return null;
-        }
-      };
-
-      const seg1Promise = fetchTts(seg1);
-      const seg2Promise = fetchTts(seg2);
-
-      try {
-        const data1 = await seg1Promise;
-        if (data1 && data1.base64Pcm && ttsAbortControllerRef.current === controller) {
-          setAudioLoadingId(null);
-          await playAudio(data1.base64Pcm, data1.audioUrl, activeId);
-
-          if (ttsAbortControllerRef.current === controller) {
-            const data2 = await seg2Promise;
-            if (data2 && data2.base64Pcm && ttsAbortControllerRef.current === controller) {
-              await playAudio(data2.base64Pcm, data2.audioUrl, activeId);
-            }
-          }
-          clearTimeout(timeoutId);
-          setAudioLoadingId(null);
-          return;
-        }
-      } catch (_) {
-        // Fall back to unified fetch below if segment pipeline was interrupted
-      }
-    }
-
-    // Unified fast TTS request supporting both real-time streaming (Preview) and instant JSON (Netlify Production)
+    // Unified fast TTS request supporting both real-time streaming (<900ms TTFB) and instant JSON
     try {
       const res = await fetch('/api/assistant/tts', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json, text/event-stream' },
+        headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream, application/json' },
         signal: controller.signal,
         body: JSON.stringify({ text: cleanSpokenText, voice: 'Aoede' })
       });

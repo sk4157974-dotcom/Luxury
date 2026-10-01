@@ -6,6 +6,7 @@
 [functions]
   node_bundler = "esbuild"
   external_node_modules = ["@google/genai", "ws"]
+  timeout = 26
 
 [[redirects]]
   from = "/api/assistant/tts"
