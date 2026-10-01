@@ -258,21 +258,11 @@ async function generateVoiceAudio(
 
   const cacheKey = `${voiceName}::${speechSlice}`;
 
-  // Check static pre-warmed cache first for instant sub-millisecond response
-  const lower = speechSlice.toLowerCase();
-  for (const [intentId, pcm] of Object.entries(PREWARMED_VOICE_CACHE)) {
-    if (
-      (intentId === 'timings' && (lower.includes('timing') || lower.includes('lunch hours') || lower.includes('dinner hours'))) ||
-      (intentId === 'identity' && (lower.includes('kaun ho') || lower.includes('who are you') || lower.includes('parichay') || lower.includes('ai concierge assistant'))) ||
-      (intentId === 'rates' && (lower.includes('rate') || lower.includes('price') || lower.includes('kitne ka'))) ||
-      (intentId === 'booking' && (lower.includes('table reservation') || lower.includes('book a table'))) ||
-      (intentId === 'address' && (lower.includes('location') || lower.includes('fraser road') || lower.includes('address'))) ||
-      (intentId === 'menu' && (lower.includes('menu highlights') || lower.includes('signature dishes'))) ||
-      (intentId === 'welcome' && lower.includes('welcome to luxury hotel') && lower.length < 180)
-    ) {
-      if (onChunk && pcm) onChunk(pcm);
-      return { base64Pcm: pcm, audioUrl: '' };
-    }
+  // Check static pre-warmed cache first for instant sub-millisecond exact match
+  if (PREWARMED_VOICE_CACHE[cacheKey]) {
+    const pcm = PREWARMED_VOICE_CACHE[cacheKey];
+    if (onChunk && pcm) onChunk(pcm);
+    return { base64Pcm: pcm, audioUrl: '' };
   }
 
   if (ttsAudioCache.has(cacheKey)) {

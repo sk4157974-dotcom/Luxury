@@ -1,5 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
 import WebSocket from 'ws';
+import { PREWARMED_VOICE_CACHE } from './prewarmedVoiceCache';
 
 export interface AudioResult {
   base64Pcm: string;
@@ -217,6 +218,13 @@ export async function generateVoiceAudio(
     if (!speechSlice) return null;
 
     const cacheKey = `${voiceName}::${speechSlice}`;
+
+    if (PREWARMED_VOICE_CACHE[cacheKey]) {
+      const pcm = PREWARMED_VOICE_CACHE[cacheKey];
+      if (onChunk && pcm) onChunk(pcm);
+      return { base64Pcm: pcm, audioUrl: '' };
+    }
+
     if (ttsAudioCache.has(cacheKey)) {
       const cached = ttsAudioCache.get(cacheKey)!;
       if (onChunk && cached.base64Pcm) {

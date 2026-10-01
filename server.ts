@@ -11,6 +11,7 @@ import {
   ttsAudioCache,
   cleanSpeechText,
 } from './src/server/voiceService';
+import { PREWARMED_VOICE_CACHE } from './src/server/prewarmedVoiceCache';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -53,7 +54,11 @@ async function startServer() {
   function getCachedAudio(text: string, voiceName: string = 'Aoede'): { base64Pcm: string; audioUrl: string } | null {
     if (!text) return null;
     const slice = cleanSpeechText(text);
-    return ttsAudioCache.get(`${voiceName}::${slice}`) || null;
+    const key = `${voiceName}::${slice}`;
+    if (PREWARMED_VOICE_CACHE[key]) {
+      return { base64Pcm: PREWARMED_VOICE_CACHE[key], audioUrl: '' };
+    }
+    return ttsAudioCache.get(key) || null;
   }
 
   // AI Restaurant Assistant Endpoint
@@ -541,17 +546,15 @@ function generateComprehensiveFallbackReply(query: string): string {
     q.includes('introduction') ||
     q.includes('parichay') ||
     q.includes('about yourself') ||
-    q.includes('your role')
+    q.includes('apne bare') ||
+    q.includes('intro') ||
+    q.includes('identity') ||
+    q.includes('who you are') ||
+    q.includes('your role') ||
+    q.includes('tum kon') ||
+    q.includes('aap kon')
   ) {
-    return `Hello ji! Main Luxury Hotel ka official 24/7 AI Concierge Assistant hoon. Mera kaam Luxury Hotel mein aapki har tarah se dil se madad aur poori seva karna hai! 🏨👑✨\n\n` +
-      `Main aapki in sabhi cheezon mein poori sahayata karne ke liye yahan hazir hoon:\n` +
-      `🍝 Signature Dishes & Menu Guidance: Hamare royal chefs ke world-famous signature food recommendations janna.\n` +
-      `💰 Rates & Special Discounts: Kisi bhi dish ka exact price aur special 20% OFF offer (Code: FLAVORO20) check karna.\n` +
-      `🛎️ Table Reservation: Romantic Terrace Garden, VIP Private Lounge ya Grand Hall mein best table reserve karna.\n` +
-      `⏰ Hotel Timings: Lunch, Dinner aur Bar Lounge ke exact hours pata karna.\n` +
-      `📍 Location & Valet: Fraser Road address aur complimentary chauffeured valet parking ki information lena.\n` +
-      `📲 Instant WhatsApp Ordering: Apni manpasand dish direct kitchen se WhatsApp par express mangwana.\n\n` +
-      `Main har pal aapki madad ke liye yahan hazir hoon. Kahiye, aaj main aapki kya seva kar sakta hoon? 😊🙏`;
+    return `Namaste ji! Main Luxury Hotel ki official 24/7 AI Concierge Assistant hoon. Mera kaam yahan Luxury Hotel mein aapki har tarah se dil se seva aur madad karna hai! 🏨👑✨ Main hamare royal chef ke signature menu, dish prices, table reservation, hotel timings, Fraser Road location aur WhatsApp order ke bare mein aapki poori madad karne ke liye hazir hoon. Kahiye, aaj main aapki kya seva kar sakti hoon? 😊🙏`;
   }
 
   // 0.1 Intelligent Food Pairing & Recommendations

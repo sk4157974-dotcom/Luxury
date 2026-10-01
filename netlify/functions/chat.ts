@@ -27,7 +27,7 @@ function sanitizeText(str: string): string {
 }
 
 /**
- * Fast intent recognition matching Preview server.ts for instantaneous (<5ms) concierge responses.
+ * Fast intent recognition for instantaneous (<5ms) concierge responses.
  */
 function hasKnownConciergeIntent(query: string): boolean {
   if (!query) return false;
@@ -35,7 +35,8 @@ function hasKnownConciergeIntent(query: string): boolean {
   return (
     q.includes('kaun ho') || q.includes('kaun hai') || q.includes('kon ho') || q.includes('kon hai') ||
     q.includes('who are you') || q.includes('what are you') || q.includes('who r u') || q.includes('introduction') ||
-    q.includes('parichay') || q.includes('about yourself') || q.includes('naam kya') || q.includes('kya karte ho') ||
+    q.includes('parichay') || q.includes('about yourself') || q.includes('apne bare') || q.includes('naam kya') ||
+    q.includes('kya karte ho') || q.includes('your role') || q.includes('tum kon') || q.includes('aap kon') ||
     q.includes('timing') || q.includes('time') || q.includes('hours') || q.includes('open') || q.includes('close') || q.includes('kab') ||
     q.includes('book') || q.includes('reservation') || q.includes('table') || q.includes('seat') ||
     q.includes('address') || q.includes('location') || q.includes('kahan') || q.includes('kaha') || q.includes('rasta') ||
@@ -51,107 +52,33 @@ function hasKnownConciergeIntent(query: string): boolean {
 }
 
 /**
- * Intelligent deterministic fallback concierge matching Preview server.ts with rich 5-star hospitality.
+ * 1:1 Word-for-Word Synchronized Deterministic Concierge Responses.
+ * What is returned here matches PREWARMED_VOICE_CACHE exactly so speech and text are 100% in sync.
  */
-function generateComprehensiveFallbackReply(query: string): string {
-  const q = query.toLowerCase().trim();
+function getSynchronizedConciergeResponse(intentId: string): string {
+  switch (intentId) {
+    case 'identity':
+      return `Namaste ji! Main Luxury Hotel ki official 24/7 AI Concierge Assistant hoon. Mera kaam yahan Luxury Hotel mein aapki har tarah se dil se seva aur madad karna hai! 🏨👑✨ Main hamare royal chef ke signature menu, dish prices, table reservation, hotel timings, Fraser Road location aur WhatsApp order ke bare mein aapki poori madad karne ke liye hazir hoon. Kahiye, aaj main aapki kya seva kar sakti hoon? 😊🙏`;
 
-  // 0. Agent Identity & Helpful Mission
-  if (
-    q.includes('kaun ho') || q.includes('kaun hai') || q.includes('kon ho') || q.includes('kon hai') ||
-    q.includes('who are you') || q.includes('what are you') || q.includes('who r u') || q.includes('kya karte ho') ||
-    q.includes('naam kya') || q.includes('introduction') || q.includes('parichay') || q.includes('about yourself') ||
-    q.includes('your role')
-  ) {
-    return `Hello ji! Main Luxury Hotel ka official 24/7 AI Concierge Assistant hoon. Mera kaam Luxury Hotel mein aapki har tarah se dil se madad aur poori seva karna hai! 🏨👑✨\n\n` +
-      `Main aapki in sabhi cheezon mein poori sahayata karne ke liye yahan hazir hoon:\n` +
-      `🍝 Signature Dishes & Menu Guidance: Hamare royal chefs ke world-famous signature food recommendations janna.\n` +
-      `💰 Rates & Special Discounts: Kisi bhi dish ka exact price aur special 20% OFF offer (Code: FLAVORO20) check karna.\n` +
-      `🛎️ Table Reservation: Romantic Terrace Garden, VIP Private Lounge ya Grand Hall mein best table reserve karna.\n` +
-      `⏰ Hotel Timings: Lunch, Dinner aur Bar Lounge ke exact hours pata karna.\n` +
-      `📍 Location & Valet: Fraser Road address aur complimentary chauffeured valet parking ki information lena.\n` +
-      `📲 Instant WhatsApp Ordering: Apni manpasand dish direct kitchen se WhatsApp par express mangwana.\n\n` +
-      `Main har pal aapki madad ke liye yahan hazir hoon. Kahiye, aaj main aapki kya seva kar sakta hoon? 😊🙏`;
+    case 'timings':
+      return `Luxury Hotel Timings & Dining Hours: ⏰🏨✨\n\n☀️ Lunch Hours: 12:00 PM – 03:30 PM (Daily)\n🌙 Dinner Hours: 07:00 PM – 11:30 PM (Daily)\n🍸 Bar & Lounge: 05:00 PM – 01:00 AM (Daily)\n\nHotel saaton din khula rehta hai. Kya aap lunch ya dinner ke liye table reserve karna chahte hain? 🛎️`;
+
+    case 'rates':
+      return `Luxury Hotel ke signature dishes ke rates yeh hain: 💰✨\n\n🍝 Artisanal Truffle Pasta – ₹450\n🍟 Crispy French Fries – ₹180\n🌯 Authentic Chicken Shawarma – ₹320\n🍲 Coastal Fish Curry – ₹550\n🍕 Wood-Fired Margherita Pizza – ₹499\n\nPehle digital order par special 20% discount ke liye promo code FLAVORO20 use karein! 🎉`;
+
+    case 'menu':
+      return `Luxury Hotel Signature Dining Highlights: 🍽️✨\n\n1. 🍝 Artisanal Truffle Pasta — Handmade fettuccine with shaved Italian black truffle.\n2. 🍟 Crispy French Fries — Double-fried with Himalayan pink salt & garlic aioli.\n3. 🌯 Authentic Chicken Shawarma — Slow-roasted chicken wrapped in fresh pita with toum.\n4. 🍲 Coastal Fish Curry — Fresh sea bass in rich coconut-kokum gravy.\n\nAap website par kisi bhi dish ko Add to Cart karke direct WhatsApp par order kar sakte hain! 🛵💨`;
+
+    case 'address':
+      return `Luxury Hotel Location & Address: 📍🏨✨\n\nHamara address hai: Grand Royale Promenade, Fraser Road, Patna.\n\nSabhi dining aur stay guests ke liye 24/7 complimentary chauffeured valet parking available hai! 🚗✨`;
+
+    case 'booking':
+      return `Table Reservation at Luxury Hotel: 🛎️👑✨\n\nTable book karna bohot aasan hai:\n1. Website Form: Header mein "BOOK A TABLE" par click karke Date, Time aur Guests select karein.\n2. Direct WhatsApp: Hamare number ${RESTAURANT_CONFIG.contact.whatsappFormatted} par message karein.\n\nAap Open-Air Terrace Garden, VIP Private Suite ya Grand Dining Hall choose kar sakte hain! 🥂✨`;
+
+    case 'welcome':
+    default:
+      return `Hello ji! Welcome to Luxury Hotel 🏨👑✨. Main Luxury Hotel ki official 24/7 AI Concierge Assistant hoon. Main menu, prices, table reservation, timings ya direct WhatsApp order ke bare mein aapki poori madad karne ke liye hazir hoon! Kahiye, aaj main aapki kya seva kar sakti hoon? 😊🙏`;
   }
-
-  // 1. Explicit Pricing Inquiry
-  const isAskingPrice =
-    q.includes('price') || q.includes('rate') || q.includes('cost') || q.includes('kitne ka') ||
-    q.includes('kitna rate') || q.includes('paisa') || q.includes('karcha') || q.includes('bill');
-
-  if (isAskingPrice) {
-    if (q.includes('pasta')) {
-      return `Artisanal Truffle Pasta ka rate ₹450 hai. 🍝✨ Yeh handmade fettuccine rich black truffle sauce aur aged parmesan ke sath serve kiya jata hai. Aap direct website se cart mein add karke WhatsApp par order kar sakte hain! 📦📲`;
-    }
-    if (q.includes('frie') || q.includes('potato')) {
-      return `Crispy Golden French Fries ka rate ₹180 hai. 🍟✨ Yeh double-fried crispy potatoes hain jo Himalayan pink salt aur house-made garlic aioli dip ke sath aate hain! 😋`;
-    }
-    if (q.includes('shawarma')) {
-      return `Authentic Chicken Shawarma ka rate ₹320 hai. 🌯✨ Isme juicy marinated roasted chicken aur garlic toum artisanal wrap mein roll kiya jata hai! 🍽️`;
-    }
-    if (q.includes('fish') || q.includes('curry')) {
-      return `Coastal Fish Curry ka rate ₹550 hai. 🍲✨ Yeh fresh sea bass aur aromatic coconut milk kokum gravy ke sath banti hai! 🌊`;
-    }
-    return `Luxury Hotel ke signature dishes ke rates yeh hain: 💰✨\n\n` +
-      `🍝 Artisanal Truffle Pasta – ₹450\n` +
-      `🍟 Crispy French Fries – ₹180\n` +
-      `🌯 Authentic Chicken Shawarma – ₹320\n` +
-      `🍲 Coastal Fish Curry – ₹550\n` +
-      `🍕 Wood-Fired Margherita Pizza – ₹499\n` +
-      `🥩 Gourmet Tenderloin Steak – ₹899\n\n` +
-      `Special Discount: Pehle digital order ya reservation par 20% OFF bhi mil raha hai (Promo Code: FLAVORO20)! 🎉 Aap direct WhatsApp par order kar sakte hain. 📲`;
-  }
-
-  // 2. Timings & Opening Hours
-  if (
-    q.includes('hour') || q.includes('time') || q.includes('timing') || q.includes('open') ||
-    q.includes('close') || q.includes('kab khulta') || q.includes('kab band') || q.includes('kab')
-  ) {
-    return `Luxury Hotel Timings & Dining Hours: ⏰🏨✨\n\n` +
-      `☀️ Lunch Hours: ${RESTAURANT_CONFIG.hours.lunch} (Daily)\n` +
-      `🌙 Dinner Hours: ${RESTAURANT_CONFIG.hours.dinner} (Daily)\n` +
-      `🍸 Bar & Lounge: ${RESTAURANT_CONFIG.hours.bar} (Daily)\n\n` +
-      `Hotel saaton din khula rehta hai (Monday to Sunday). Kya aap lunch ya dinner ke liye table reserve karna chahte hain? 🛎️`;
-  }
-
-  // 3. Table Reservation
-  if (q.includes('book') || q.includes('reservation') || q.includes('table') || q.includes('seat')) {
-    return `Table Reservation at Luxury Hotel: 🛎️👑✨\n\n` +
-      `Table book karna bohot aasan hai:\n` +
-      `1. Website Form: Header mein "BOOK A TABLE" par click karke Date, Time aur Guests select karein.\n` +
-      `2. Direct WhatsApp: Hamare number ${RESTAURANT_CONFIG.contact.whatsappFormatted} par message karein.\n\n` +
-      `Aap Open-Air Terrace Garden, VIP Private Suite ya Grand Dining Hall choose kar sakte hain! 🥂✨`;
-  }
-
-  // 4. Address & Location
-  if (q.includes('address') || q.includes('location') || q.includes('kahan') || q.includes('kaha') || q.includes('rasta') || q.includes('map')) {
-    return `Luxury Hotel Location & Address: 📍🏨✨\n\n` +
-      `Hamara address hai: ${RESTAURANT_CONFIG.contact.address}, ${RESTAURANT_CONFIG.contact.city}.\n\n` +
-      `Sabhi dining aur stay guests ke liye 24/7 complimentary chauffeured valet parking available hai! 🚗✨`;
-  }
-
-  // 5. Popular Dishes
-  if (q.includes('popular') || q.includes('famous') || q.includes('special') || q.includes('best') || q.includes('accha')) {
-    return `Luxury Hotel Signature Dining Highlights: 🍽️✨\n\n` +
-      `1. 🍝 Artisanal Truffle Pasta — Handmade fettuccine with shaved Italian black truffle.\n` +
-      `2. 🍟 Crispy French Fries — Double-fried potatoes seasoned with Himalayan pink salt & garlic aioli.\n` +
-      `3. 🌯 Authentic Chicken Shawarma — Slow-roasted chicken wrapped in fresh pita with toum.\n` +
-      `4. 🍲 Coastal Fish Curry — Fresh sea bass in rich coconut-kokum gravy.\n\n` +
-      `Aap kisi bhi dish ko 'Add to Cart' karke direct WhatsApp par kitchen se express order kar sakte hain! 🛵💨`;
-  }
-
-  // 6. Complete Menu
-  if (q.includes('menu') || q.includes('food') || q.includes('khana') || q.includes('dish')) {
-    return `Luxury Hotel Royal Dining Menu Highlights: 🍽️✨\n\n` +
-      `🍝 Pastas & Mains: Artisanal Truffle Pasta (₹450), Coastal Fish Curry (₹550), Chicken Shawarma (₹320).\n` +
-      `🍟 Starters: Crispy French Fries (₹180), Wild Mushroom Soup, Heirloom Burrata.\n` +
-      `🍕 Wood-Fired Pizzas: Classic Margherita DOP (₹499), Diavola Piccante.\n` +
-      `🍹 Mocktails: Berry Hibiscus Fizz, Elderflower Spritz.\n\n` +
-      `Kahiye, main aapke liye inme se koi dish order karne mein madad karoon? 😊`;
-  }
-
-  // 7. General Welcome Greeting
-  return `Hello ji! Welcome to ${RESTAURANT_CONFIG.name} 🏨👑✨. Main Luxury Hotel ka official 24/7 AI Concierge Assistant hoon. Main hamare signature dishes 🍝, prices 💰, table reservation 🛎️, timings ⏰ ya direct WhatsApp order ke bare mein aapki poori madad karne ke liye hazir hoon! Kahiye, aaj main aapki kya seva karoon? 😊🙏`;
 }
 
 export const handler = async (event: any, context?: any) => {
@@ -197,13 +124,18 @@ export const handler = async (event: any, context?: any) => {
 
     const apiKey = getGeminiApiKey();
     let replyText = '';
-
     let intentId: string | null = null;
 
     // Fast-path: Check deterministic concierge intents matching Preview server.ts (<5ms)
     if (hasKnownConciergeIntent(message)) {
       const q = message.toLowerCase().trim();
-      if (q.includes('kaun ho') || q.includes('who are you') || q.includes('who r u') || q.includes('parichay')) {
+      if (
+        q.includes('kaun ho') || q.includes('kaun hai') || q.includes('kon ho') || q.includes('kon hai') ||
+        q.includes('who are you') || q.includes('what are you') || q.includes('who r u') || q.includes('parichay') ||
+        q.includes('about yourself') || q.includes('apne bare') || q.includes('naam kya') || q.includes('kya karte ho') ||
+        q.includes('introduction') || q.includes('intro') || q.includes('identity') || q.includes('who you are') ||
+        q.includes('your role') || q.includes('tum kon') || q.includes('aap kon')
+      ) {
         intentId = 'identity';
       } else if (q.includes('timing') || q.includes('time') || q.includes('hour') || q.includes('open') || q.includes('close') || q.includes('kab')) {
         intentId = 'timings';
@@ -219,7 +151,7 @@ export const handler = async (event: any, context?: any) => {
         intentId = 'welcome';
       }
 
-      replyText = generateComprehensiveFallbackReply(message);
+      replyText = getSynchronizedConciergeResponse(intentId);
     }
 
     // Dynamic AI Path for open-ended or unique questions
@@ -231,16 +163,30 @@ export const handler = async (event: any, context?: any) => {
         });
 
         const prompt = `You are the official Head AI Concierge & Master Gastronomy Advisor for "${RESTAURANT_CONFIG.name}".
-Respond with genuine Indian 5-star hospitality, utmost warmth, elegance, and dedication.
-Support both English and Hindi/Hinglish naturally.
-Address: ${RESTAURANT_CONFIG.contact.address}, ${RESTAURANT_CONFIG.contact.city}.
-Timings: Lunch 12:00 PM – 03:30 PM, Dinner 07:00 PM – 11:30 PM.
-Dishes: Artisanal Truffle Pasta (₹450), Crispy French Fries (₹180), Chicken Shawarma (₹320), Coastal Fish Curry (₹550).
-Discount: 20% off with promo code FLAVORO20.
-Answer concisely in 3-5 sentences with helpful emojis.
+You represent a world-class 5-star luxury heritage hotel in Patna.
+Your personality is polite, elegant, warm, respectful, and dedicated to 5-star Indian hospitality (use respectful Hindi/Hinglish honorifics like "ji", "aap", "swagat hai").
+You possess complete knowledge of the entire hotel, its menus, and this website:
+- Official Name: Luxury Hotel (Haute Gastronomy & Suites)
+- Address: ${RESTAURANT_CONFIG.contact.address}, ${RESTAURANT_CONFIG.contact.city}
+- Timings: Lunch ${RESTAURANT_CONFIG.hours.lunch}, Dinner ${RESTAURANT_CONFIG.hours.dinner}, Bar & Lounge ${RESTAURANT_CONFIG.hours.bar} (Open 7 days a week)
+- Valet Parking: 24/7 complimentary chauffeured valet parking for all dining & stay guests
+- Contact / WhatsApp: ${RESTAURANT_CONFIG.contact.whatsappFormatted}
+- Dining Zones: Open-Air Romantic Terrace Garden (candlelight dinner), VIP Private Suites (birthdays, family gatherings), Grand Dining Hall (corporate events)
+- Signature Dishes & Prices:
+  * Artisanal Truffle Pasta (₹450)
+  * Crispy Golden French Fries with Garlic Aioli (₹180)
+  * Authentic Chicken Shawarma in Pita (₹320)
+  * Coastal Fish Curry in coconut-kokum gravy (₹550)
+  * Wood-Fired Margherita Pizza (₹499)
+  * Gourmet Tenderloin Steak Plate (₹899)
+  * Atlantic Salmon Salad (₹799)
+- Offers & Discounts: Special 20% discount on first reservation / digital order with promo code FLAVORO20
+- Ordering: Guests can tap 'Add to Cart' on any dish and tap 'Order via WhatsApp' to order directly from the kitchen
+- Reservations: Guests can use the 'Book a Table' button or tell you their date, time, and guest count
+- Vegetarian / Dietary: Dedicated vegetarian cookware, fresh organic produce, wide vegetarian pasta, pizza, and soup options
 
 Guest: ${message}
-Assistant:`;
+Concierge Assistant (respond warmly in 2-4 sentences with appropriate emojis):`;
 
         const chatModels = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.5-flash'];
         for (const model of chatModels) {
@@ -270,12 +216,12 @@ Assistant:`;
     }
 
     if (!replyText) {
-      replyText = generateComprehensiveFallbackReply(message);
+      replyText = getSynchronizedConciergeResponse('welcome');
     }
 
     const cleanReply = sanitizeText(replyText);
 
-    // Audio generation pipeline: Check cache or generate fast voice audio (<3s)
+    // Audio generation pipeline: Check exact prewarmed cache first
     let base64Pcm: string | null = null;
     let audioUrl: string | null = null;
 
@@ -284,14 +230,14 @@ Assistant:`;
 
     if (intentId && PREWARMED_VOICE_CACHE[intentId]) {
       base64Pcm = PREWARMED_VOICE_CACHE[intentId];
+    } else if (PREWARMED_VOICE_CACHE[cacheKey]) {
+      base64Pcm = PREWARMED_VOICE_CACHE[cacheKey];
     } else if (ttsAudioCache.has(cacheKey)) {
       const cached = ttsAudioCache.get(cacheKey)!;
       base64Pcm = cached.base64Pcm;
       audioUrl = cached.audioUrl;
     } else if (apiKey) {
-      // Race voice generation with 3.5s timeout:
-      // If voice completes in <3.5s, include base64Pcm directly in the chat payload!
-      // This grants 0ms speech start delay on the frontend!
+      // For dynamic responses, race fast voice generation with 3.5s timeout
       try {
         const audioPromise = generateVoiceAudio(cleanReply, 'Aoede');
         const timeoutPromise = new Promise<null>((r) => setTimeout(() => r(null), 3500));
@@ -315,14 +261,14 @@ Assistant:`;
     };
   } catch (err: any) {
     console.error('[Netlify Chat Error]:', err);
-    const fallback = generateComprehensiveFallbackReply('');
+    const fallback = getSynchronizedConciergeResponse('welcome');
     return {
       statusCode: 200,
       headers: CORS_HEADERS,
       body: JSON.stringify({
         success: true,
         reply: fallback,
-        base64Pcm: null,
+        base64Pcm: PREWARMED_VOICE_CACHE['welcome'] || null,
         audioUrl: null,
       }),
     };
